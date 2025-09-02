@@ -9,11 +9,24 @@
   <div class="container">
     <h1>Contact Me</h1>
     <form action="https://formspree.io/f/YOUR-FORM-ID" method="POST">
-      <input type="text" name="name" placeholder="Your Name" required><br>
-      <input type="email" name="_replyto" placeholder="Your Email" required><br>
-      <textarea name="message" placeholder="Your Message" required></textarea><br>
-      <button type="submit">Send</button>
-    </form>
+  <label for="name">Name:</label>
+  <input type="text" id="name" name="name" required><br><br>
+
+  <label for="size">Shirt Size:</label>
+  <select id="size" name="size" required>
+    <option value="">--Select--</option>
+    <option value="Small">Small</option>
+    <option value="Medium">Medium</option>
+    <option value="Large">Large</option>
+    <option value="XL">XL</option>
+    <option value="XXL">XXL</option>
+  </select><br><br>
+
+  <label for="request">Requested Shirt:</label>
+  <textarea id="request" name="request" placeholder="Describe the shirt you want" required></textarea><br><br>
+
+  <button type="submit">Submit</button>
+</form>
   </div>
 </body>
 </html>
