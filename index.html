@@ -51,13 +51,13 @@
 </fieldset>
 
 <!-- Payment Notes -->
-<div id="cashapp-note" style="display:none; font-size:0.9rem; color:#444; margin:10px 0;">
-  Please send payment via Cash App immediately after submitting your order so it can be reconciled quickly.
-</div>
-<div id="cash-note" style="display:none; font-size:0.9rem; color:#444; margin:10px 0;">
-  Please provide cash ASAP so your order can be processed.
+<div id="cashapp-note" class="note-box" style="display:none;">
+  <strong>Note:</strong> Please send payment via Cash App immediately after submitting your order so it can be reconciled quickly.
 </div>
 
+<div id="cash-note" class="note-box" style="display:none;">
+  <strong>Note:</strong> Please provide cash ASAP so your order can be processed.
+</div>
   <!-- Redirect to Thank You Page -->
   <input type="hidden" name="_next" value="https://iyaayasfw.com/thank-you.html">
       <input type="hidden" name="_captcha" value="false">
@@ -89,5 +89,30 @@ document.getElementById("shirt-form").addEventListener("submit", function() {
   setTimeout(function() {
     window.location.href = "https://iyaayasfw.com/thank-you.html";
   }, 1000); // redirect after 1 second
+});
+</script>
+
+    <script>
+document.addEventListener("DOMContentLoaded", () => {
+  const cashAppRadio = document.getElementById("pay-cashapp");
+  const cashRadio = document.getElementById("pay-cash");
+  const cashAppNote = document.getElementById("cashapp-note");
+  const cashNote = document.getElementById("cash-note");
+
+  function toggleNotes() {
+    if (cashAppRadio.checked) {
+      cashAppNote.style.display = "block";
+      cashNote.style.display = "none";
+    } else if (cashRadio.checked) {
+      cashNote.style.display = "block";
+      cashAppNote.style.display = "none";
+    } else {
+      cashAppNote.style.display = "none";
+      cashNote.style.display = "none";
+    }
+  }
+
+  cashAppRadio.addEventListener("change", toggleNotes);
+  cashRadio.addEventListener("change", toggleNotes);
 });
 </script>
