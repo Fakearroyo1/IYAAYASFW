@@ -137,3 +137,18 @@ button:hover {
 @media (max-width: 420px) {
   .radio-group { gap: 14px; }
 }
+.note-box {
+  background-color: #1e293b;   /* dark slate */
+  color: #f1f5f9;             /* light text */
+  border-left: 4px solid #3b82f6; /* bright blue bar */
+  padding: 12px 16px;
+  margin: 12px 0;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.note-box strong {
+  color: #3b82f6;   /* bright blue for "Note:" */
+  margin-right: 6px;
+}
