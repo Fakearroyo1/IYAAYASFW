@@ -98,3 +98,20 @@ button:hover {
     padding: 8px;
   }
 }
+/* Radio button layout */
+.radio-group {
+  display: flex;
+  gap: 20px; /* space between options */
+  margin: 10px 0;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  font-weight: normal; /* keeps text lighter */
+  cursor: pointer;
+}
+
+.radio-group input {
+  margin-right: 6px; /* space between circle and text */
+}
