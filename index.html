@@ -33,17 +33,24 @@
   <label for="request">Requested Shirt:</label>
   <textarea id="request" name="request" placeholder="Describe the shirt you want" required></textarea>
 
-<label>Payment Method:</label>
-<div class="radio-group">
-  <label>
-    <input type="radio" name="payment" value="CashApp"> Cash App
-  </label>
-  <label>
-    <input type="radio" name="payment" value="Cash"> Cash
-  </label>
-</div>
+  <!-- Payment Method -->
+<fieldset class="fieldset">
+  <legend class="field-label">Payment Method:</legend>
 
-<!-- Payment Notes -->
+  <div class="radio-group">
+    <label class="radio">
+      <input type="radio" id="pay-cashapp" name="payment" value="CashApp" required>
+      <span>Cash&nbsp;App</span>
+    </label>
+
+    <label class="radio">
+      <input type="radio" id="pay-cash" name="payment" value="Cash" required>
+      <span>Cash</span>
+    </label>
+  </div>
+</fieldset>
+
+<!-- Payment Notes (unchanged; leave where they were) -->
 <div id="cashapp-note" style="display:none; font-size:0.9rem; color:#444; margin:10px 0;">
   Please send payment via Cash App immediately after submitting your order so it can be reconciled quickly.
 </div>
