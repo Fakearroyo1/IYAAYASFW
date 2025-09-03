@@ -101,17 +101,14 @@ button:hover {
 /* Radio button layout */
 .radio-group {
   display: flex;
-  gap: 20px; /* space between options */
+  gap: 20px;       /* spacing between options */
   margin: 10px 0;
 }
 
 .radio-group label {
   display: flex;
   align-items: center;
-  cursor: pointer;
-  font-weight: normal; /* don’t make the option text bold */
-}
-
-.radio-group input {
-  margin-right: 6px; /* space between circle and text */
+  gap: 6px;        /* space between circle and text */
+  font-weight: normal;
+  color: #333;
 }
