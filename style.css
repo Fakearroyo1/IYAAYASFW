@@ -98,17 +98,43 @@ button:hover {
     padding: 8px;
   }
 }
-/* Radio button layout */
-.radio-group {
-  display: flex;
-  gap: 20px;       /* spacing between options */
-  margin: 10px 0;
+/* Fieldset + legend for consistent headings */
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.field-label {
+  display: block;
+  margin: 10px 0 5px;
+  font-weight: bold;
+  color: #333;
 }
 
-.radio-group label {
+/* Radio buttons: clean inline layout */
+.radio-group {
   display: flex;
   align-items: center;
-  gap: 6px;        /* space between circle and text */
-  font-weight: normal;
+  gap: 20px;
+  flex-wrap: wrap; /* wraps nicely on small screens */
+  margin: 6px 0 12px;
+}
+.radio-group .radio {
+  display: inline-flex;          /* override global label block */
+  align-items: center;
+  gap: 8px;                      /* space between circle and text */
+  font-weight: normal;           /* keep options non-bold */
   color: #333;
+  white-space: nowrap;           /* prevents “Cash App” from splitting */
+  line-height: 1.2;
+}
+.radio-group .radio input[type="radio"] {
+  margin: 0;                     /* remove weird offsets */
+  /* optional: accent color if your browser supports it */
+  accent-color: #2c7be5;
+}
+
+/* Optional: small-screen polish */
+@media (max-width: 420px) {
+  .radio-group { gap: 14px; }
 }
