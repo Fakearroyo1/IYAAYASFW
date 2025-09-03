@@ -108,8 +108,8 @@ button:hover {
 .radio-group label {
   display: flex;
   align-items: center;
-  font-weight: normal; /* keeps text lighter */
   cursor: pointer;
+  font-weight: normal; /* don’t make the option text bold */
 }
 
 .radio-group input {
