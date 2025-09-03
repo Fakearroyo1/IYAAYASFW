@@ -10,7 +10,7 @@
   <div class="container">
     <h1>AMMO got a website! Fill out the form below.</h1>
     <form action="https://formspree.io/f/xwpnrldn" method="POST">
-  <!-- Name -->
+ <!-- Name -->
   <label for="name">Name:</label>
   <input type="text" id="name" name="name" placeholder="Your Name" required>
 
@@ -29,13 +29,50 @@
   <label for="quantity">Quantity:</label>
   <input type="number" id="quantity" name="quantity" min="1" value="1" required>
 
-  <!-- Shirt Request Details -->
+  <!-- Requested Shirt -->
   <label for="request">Requested Shirt:</label>
   <textarea id="request" name="request" placeholder="Describe the shirt you want" required></textarea>
+
+  <!-- Payment Method -->
+  <label>Payment Method:</label>
+  <div>
+    <input type="radio" id="pay-cashapp" name="payment" value="CashApp" required>
+    <label for="pay-cashapp">Cash App</label>
+  </div>
+  <div>
+    <input type="radio" id="pay-cash" name="payment" value="Cash" required>
+    <label for="pay-cash">Cash</label>
+  </div>
+
+  <!-- Payment Notes (shown conditionally) -->
+  <div id="cashapp-note" style="display:none; font-size:0.9rem; color:#444; margin:10px 0;">
+    Please send payment via Cash App immediately after submitting your order so it can be reconciled quickly.
+  </div>
+  <div id="cash-note" style="display:none; font-size:0.9rem; color:#444; margin:10px 0;">
+    Please provide cash ASAP so your order can be processed.
+  </div>
+
+  <!-- Redirect to Thank You Page -->
+  <input type="hidden" name="_next" value="https://YOURDOMAIN.com/thank-you.html">
 
   <!-- Submit -->
   <button type="submit">Submit</button>
 </form>
-  </div>
-</body>
-</html>
+
+<script>
+  // Show/hide notes depending on payment choice
+  const cashAppRadio = document.getElementById('pay-cashapp');
+  const cashRadio = document.getElementById('pay-cash');
+  const cashAppNote = document.getElementById('cashapp-note');
+  const cashNote = document.getElementById('cash-note');
+
+  cashAppRadio.addEventListener('change', () => {
+    cashAppNote.style.display = 'block';
+    cashNote.style.display = 'none';
+  });
+
+  cashRadio.addEventListener('change', () => {
+    cashAppNote.style.display = 'none';
+    cashNote.style.display = 'block';
+  });
+</script>
