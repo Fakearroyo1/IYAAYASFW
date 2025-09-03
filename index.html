@@ -9,7 +9,7 @@
 <body>
   <div class="container">
     <h1>AMMO got a website! Fill out the form below.</h1>
-    <form action="https://formsubmit.co/snackbar@iyaayasfw.com" method="POST">
+    <form action="https://formspree.io/f/xwpnrldn" method="POST">
  <!-- Name -->
   <label for="name">Name:</label>
   <input type="text" id="name" name="name" placeholder="Your Name" required>
@@ -78,4 +78,12 @@
     cashAppNote.style.display = 'none';
     cashNote.style.display = 'block';
   });
+</script>
+    <script>
+document.getElementById("shirt-form").addEventListener("submit", function() {
+  // wait a moment so Formspree receives the data
+  setTimeout(function() {
+    window.location.href = "https://iyaayasfw.com/thank-you.html";
+  }, 1000); // redirect after 1 second
+});
 </script>
