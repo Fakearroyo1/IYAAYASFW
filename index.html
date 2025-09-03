@@ -35,14 +35,16 @@
 
   <!-- Payment Method -->
   <label>Payment Method:</label>
-  <div>
+<div class="radio-group">
+  <label>
     <input type="radio" id="pay-cashapp" name="payment" value="CashApp" required>
-    <label for="pay-cashapp">Cash App</label>
-  </div>
-  <div>
+    Cash App
+  </label>
+  <label>
     <input type="radio" id="pay-cash" name="payment" value="Cash" required>
-    <label for="pay-cash">Cash</label>
-  </div>
+    Cash
+  </label>
+</div>
 
   <!-- Payment Notes (shown conditionally) -->
   <div id="cashapp-note" style="display:none; font-size:0.9rem; color:#444; margin:10px 0;">
