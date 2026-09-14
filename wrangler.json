@@ -23,7 +23,12 @@
     }
   ],
   "vars": {},
-  "routes": [],
+  "routes": [
+    {
+      "pattern": "iyaayasfw.com",
+      "custom_domain": true
+    }
+  ],
   "limits": {
     "cpu_ms": 30000
   },
