@@ -20,6 +20,15 @@ export async function POST(request:Request){
    if(!allowed)return json({error:'Too many attempts. Try again in 15 minutes.'},429);
    await db.batch([db.prepare('DELETE FROM auth_limits WHERE expires_at<?').bind(Date.now()),db.prepare('DELETE FROM auth_sessions WHERE expires_at<?').bind(Date.now())]);
    const m=await db.prepare('SELECT m.id,m.active,c.password_hash FROM members m LEFT JOIN auth_credentials c ON c.member_id=m.id WHERE lower(m.email)=?').bind(email).first<{id:string;active:number;password_hash:string|null}>();
+   // Private operational diagnostics: booleans only; never log credentials or identity.
+   if(!m?.password_hash)console.info('AUTH_SETUP_CHECK',JSON.stringify({
+    ownerConfigured:Boolean(OWNER_EMAIL),
+    ownerMatchesLogin:email===OWNER_EMAIL,
+    bootstrapConfigured:typeof env.BOOTSTRAP_PASSWORD==='string'&&env.BOOTSTRAP_PASSWORD.length>0,
+    bootstrapLengthValid:validPassword(env.BOOTSTRAP_PASSWORD),
+    bootstrapMatchesLogin:validPassword(env.BOOTSTRAP_PASSWORD)&&same(password,env.BOOTSTRAP_PASSWORD),
+    memberFound:Boolean(m),memberActive:Boolean(m?.active),
+   }));
    if(m?.active&&!m.password_hash&&email===OWNER_EMAIL&&validPassword(env.BOOTSTRAP_PASSWORD)&&same(password,env.BOOTSTRAP_PASSWORD)){
     const hash=await passwordHash(password);await db.prepare('INSERT OR IGNORE INTO auth_credentials(member_id,password_hash,updated_at) VALUES(?,?,?)').bind(m.id,hash,Date.now()).run();
     m.password_hash=(await db.prepare('SELECT password_hash FROM auth_credentials WHERE member_id=?').bind(m.id).first<{password_hash:string}>())?.password_hash||null;
