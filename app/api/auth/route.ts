@@ -41,15 +41,18 @@ export async function POST(request:Request){
   const admin=await sessionUser(db,request.headers.get('cookie'));if(admin?.role!=='admin')return json({error:'Administrator access is required.'},403);
   if(!await rateLimit(db,'admin:'+admin.memberId,30,60000))return json({error:'Please wait a minute before trying again.'},429);
   if(typeof b.memberId!=='string'||b.memberId.length>80)return json({error:'Choose a member.'},400);
-  const target=await db.prepare('SELECT id FROM members WHERE id=?').bind(b.memberId).first();if(!target)return json({error:'Member not found.'},404);
+  const target=await db.prepare('SELECT id,role FROM members WHERE id=?').bind(b.memberId).first<{id:string;role:string}>();if(!target)return json({error:'Member not found.'},404);
+  if(target.role==='admin'&&target.id!==admin.memberId&&admin.email.toLowerCase()!==OWNER_EMAIL)return json({error:'Only the owner can manage another administrator.'},403);
+  // Recheck access in the write transaction, including after expensive password hashing.
+  const accessGuard=()=>db.prepare("INSERT INTO guards(id,valid) VALUES(?,CASE WHEN EXISTS(SELECT 1 FROM members actor JOIN members target ON target.id=? WHERE actor.id=? AND actor.active=1 AND actor.role='admin' AND (target.role<>'admin' OR target.id=actor.id OR lower(actor.email)=?)) THEN 1 ELSE 0 END)").bind(crypto.randomUUID(),b.memberId,admin.memberId,OWNER_EMAIL);
   if(b.action==='password'){
    if(!validPassword(b.password))return json({error:'Use a password between 15 and 128 characters.'},400);
    const hash=await passwordHash(b.password);
-   await db.batch([db.prepare('INSERT INTO auth_credentials(member_id,password_hash,updated_at) VALUES(?,?,?) ON CONFLICT(member_id) DO UPDATE SET password_hash=excluded.password_hash,updated_at=excluded.updated_at').bind(b.memberId,hash,Date.now()),db.prepare('DELETE FROM auth_sessions WHERE member_id=?').bind(b.memberId),db.prepare('INSERT INTO audit(id,actor,kind,target,detail,created_at) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),admin.memberId,'password_assigned',b.memberId,'{}',Date.now())]);
+   await db.batch([accessGuard(),db.prepare('INSERT INTO auth_credentials(member_id,password_hash,updated_at) VALUES(?,?,?) ON CONFLICT(member_id) DO UPDATE SET password_hash=excluded.password_hash,updated_at=excluded.updated_at').bind(b.memberId,hash,Date.now()),db.prepare('DELETE FROM auth_sessions WHERE member_id=?').bind(b.memberId),db.prepare('INSERT INTO audit(id,actor,kind,target,detail,created_at) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),admin.memberId,'password_assigned',b.memberId,'{}',Date.now()),db.prepare('DELETE FROM guards')]);
    return json({ok:true,signedOut:b.memberId===admin.memberId});
   }
   if(b.action==='revoke'){
-   await db.batch([db.prepare('DELETE FROM auth_sessions WHERE member_id=?').bind(b.memberId),db.prepare('INSERT INTO audit(id,actor,kind,target,detail,created_at) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),admin.memberId,'sessions_revoked',b.memberId,'{}',Date.now())]);return json({ok:true,signedOut:b.memberId===admin.memberId});
+   await db.batch([accessGuard(),db.prepare('DELETE FROM auth_sessions WHERE member_id=?').bind(b.memberId),db.prepare('INSERT INTO audit(id,actor,kind,target,detail,created_at) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),admin.memberId,'sessions_revoked',b.memberId,'{}',Date.now()),db.prepare('DELETE FROM guards')]);return json({ok:true,signedOut:b.memberId===admin.memberId});
   }
   return json({error:'Unknown action.'},400);
  }catch{ return json({error:'Sign-in service is temporarily unavailable. No access was granted.'},503)}
