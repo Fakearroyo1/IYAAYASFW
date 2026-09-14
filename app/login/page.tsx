@@ -1,0 +1,9 @@
+'use client';
+import {useState} from 'react';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+export default function Login(){
+ const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);setBusy(true);setError('');try{const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:f.get('email'),password:f.get('password')})});const result=await r.json() as {error?:string};if(!r.ok)throw Error(result.error||'Sign-in failed.');window.location.replace('/')}catch(e){setError(e instanceof Error?e.message:'Try again.');setBusy(false)}}
+ return <main className="login-shell"><section className="panel login-card"><div className="brand"><span className="brand-mark">I</span><span>IYAAYASFW<span className="brand-sub">Unit Supply</span></span></div><h1>Member sign-in</h1><p>Use your approved email and the password assigned by your administrator.</p><form onSubmit={submit}><label className="field"><span>Email address</span><Input name="email" type="email" autoComplete="username" required maxLength={254}/></label><label className="field"><span>Password</span><Input name="password" type="password" autoComplete="current-password" required maxLength={128}/></label>{error?<p className="notice error" role="alert">{error}</p>:null}<Button type="submit" disabled={busy}>{busy?'Signing in…':'Sign in'}</Button></form><p className="fine">This device stays signed in until you sign out, your access is reset, or your browser removes the session. Use a personal device.</p><p className="fine">Need access or a password reset? Ask your unit store administrator.</p></section></main>
+}
