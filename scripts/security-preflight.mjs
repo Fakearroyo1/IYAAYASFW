@@ -4,6 +4,26 @@ import {pathToFileURL} from 'node:url';
 export const ACCOUNT='60bbba10092a452ee58b3bff5c92a894',WORKER='iyaayasfw-supply',HOST='iyaayasfw.com';
 const requireThat=(ok,message)=>{if(!ok)throw Error(message)};
 const shortSession=value=>typeof value==='string'&&/^(?:[1-9]|[12][0-9]|30)m$/.test(value);
+export function validateAmrMatching(mfa){
+ const error='Disable IdP AMR matching to require the configured independent MFA.';
+ requireThat(mfa&&typeof mfa==='object'&&!Array.isArray(mfa),error+' Organization MFA configuration is missing.');
+ const knownAmrFields=['amr_matching_enabled','amr_session_duration','amr_matching_session_duration'];
+ requireThat(Object.keys(mfa).every(key=>!key.startsWith('amr_')||knownAmrFields.includes(key)),error+' Unrecognized AMR response fields.');
+ if(Object.hasOwn(mfa,'amr_matching_enabled')){
+  // The newer representation has an explicit switch. An enabled switch must
+  // never be accepted just because either duration is zero or absent.
+  requireThat(mfa.amr_matching_enabled===false,error+' The AMR switch is enabled or invalid.');
+ }else{
+  // Cloudflare's generated SDK also exposes the duration-based representation:
+  // https://github.com/cloudflare/cloudflare-typescript/blob/main/src/resources/zero-trust/organizations/organizations.ts
+  // Recognize an actual organization MFA config before accepting its optional
+  // AMR duration as unset. A missing object is not proof that MFA is configured.
+  requireThat(!Object.hasOwn(mfa,'amr_session_duration'),error+' AMR duration has no corresponding switch.');
+  requireThat(Array.isArray(mfa.allowed_authenticators)&&mfa.allowed_authenticators.some(v=>['security_key','biometrics'].includes(v))&&shortSession(mfa.session_duration),error+' Unrecognized organization MFA configuration.');
+ }
+ const duration=mfa.amr_matching_session_duration;
+ requireThat(duration===undefined||duration===null||duration===''||duration==='0m'||duration==='0h',error+' The duration-based AMR setting is enabled or invalid.');
+}
 export function validateAccess(app,policies,organization,audience,issuer){
  requireThat(app.type==='self_hosted'&&app.domain===HOST+'/api/admin/access','Access must protect the exact administrator verification callback.');
  requireThat(app.aud===audience,'Access audience does not match the Worker runtime variable.');
@@ -17,9 +37,7 @@ export function validateAccess(app,policies,organization,audience,issuer){
   requireThat(mfa?.mfa_disabled===false&&shortSession(mfa.session_duration)&&mfa.allowed_authenticators?.length>0&&mfa.allowed_authenticators.every(v=>['security_key','biometrics'].includes(v)),'Every allow policy must require phishing-resistant independent MFA for at most 30 minutes.');
   requireThat(!policy.session_duration||shortSession(policy.session_duration),'An Access policy session exceeds 30 minutes.');
  }
- // AMR matching can substitute an identity provider's MFA for our required
- // security key or biometric challenge, regardless of its session duration.
- requireThat(organization.mfa_config?.amr_matching_enabled===false,'Disable IdP AMR matching to require the configured independent MFA.');
+ validateAmrMatching(organization.mfa_config);
 }
 export async function preflight(config,environment=process.env,fetcher=fetch){
  requireThat(!environment.CF_PAGES,'Production Worker deployment is disabled in Cloudflare Pages.');
