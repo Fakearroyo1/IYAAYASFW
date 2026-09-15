@@ -1,3 +1,4 @@
+import {rateLimit} from '@/lib/auth/session';
 import {env} from 'cloudflare:workers';
 import {getUser} from '@/app/auth';
 import {accessFor,canShop} from '@/lib/pilot/access';
@@ -8,7 +9,8 @@ export async function POST(request:Request){
  try{
   if(request.headers.get('origin')!==new URL(request.url).origin)return json('Open the store and try again.',403);
   if(!env.DB||!env.BUCKET)return json('Image storage is temporarily unavailable.',503);
-  if((await identity(env.DB,await getUser()))?.role!=='admin')return json('Administrator access is required.',403);
+  const member=await identity(env.DB,await getUser());if(member?.role!=='admin')return json('Administrator access is required.',403);
+  if(!await rateLimit(env.DB,'upload:'+member.id,10,60000))return json('Too many uploads. Try again in one minute.',429);
   const reader=request.body?.getReader();if(!reader)return json('Choose an image.',400);
   const chunks:Uint8Array[]=[];let size=0;
   while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>6*1024*1024){await reader.cancel();return json('Choose an image smaller than 5 MB.',413)}chunks.push(value)}

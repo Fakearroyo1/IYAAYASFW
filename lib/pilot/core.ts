@@ -14,3 +14,6 @@ export const audit=(db:DB,actor:string,kind:string,target:string,detail:any)=>st
 export const guard=(db:DB,condition:string,...values:any[])=>stmt(db,`INSERT INTO guards(id,valid) VALUES(?,CASE WHEN (${condition}) THEN 1 ELSE 0 END)`,uid(),...values);
 export const hash=async(v:any)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(v))))).map(x=>x.toString(16).padStart(2,'0')).join('');
 export async function batchAtomic(db:DB,statements:D1PreparedStatement[]){try{return await db.batch([...statements,stmt(db,'DELETE FROM guards')])}catch(e){if(/constraint|unique/i.test(String(e)))fail('The record changed or this action was already recorded. Refresh and check before trying again.',409);throw e}}
+
+// Revalidate the actual session inside a money/stock write transaction.
+export function sessionGuard(db:DB,memberId:string,tokenHash?:string){return tokenHash?[guard(db,"EXISTS(SELECT 1 FROM auth_sessions s JOIN members m ON m.id=s.member_id WHERE s.token_hash=? AND m.id=? AND m.active=1 AND s.expires_at>? AND s.created_at>?-CASE WHEN m.role='admin' THEN 43200000 ELSE 2592000000 END)",tokenHash,memberId,Date.now(),Date.now())]:[]}

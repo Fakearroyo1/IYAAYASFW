@@ -55,3 +55,36 @@ TMPDIR=/dev/shm node tests/auth-integration.mjs
 Tests use synthetic isolated SQLite or Workers D1/R2 storage and never connect to production. They cover preservation across repeated schema application, access restrictions, setup-code activation, password changes and recovery, pricing calculations, option stock, personalization, order retries, voids, and pickup/payment separation.
 
 Product images under `asset-source/` are restored and checksum-verified during each build. Uploaded product photos remain in the existing R2 bucket.
+
+## Security checks and deployment review
+
+Run `pnpm run typecheck`, `node tests/pilot.mjs`, `node tests/http-security.mjs`,
+`pnpm run build`, `node tests/auth-integration.mjs`, and `node tests/security.mjs`.
+The security suite uses disposable Workers D1/R2 instances and synthetic users.
+It never sends traffic to the production domain.
+
+Member sessions expire after seven inactive days or thirty days total. Admin
+sessions expire after thirty inactive minutes or twelve hours total. Expiration
+is checked on the server; existing stored passwords and business records remain.
+Passwords created or replaced are screened against a local common-password list.
+
+The Worker entry applies a nonce-based script CSP, framing protection, HSTS,
+private no-store responses, and blocks unused Server Actions/image optimization.
+Product images use the existing authenticated image endpoint and static assets.
+Keep the workers.dev and preview URLs disabled when using the custom domain.
+
+Member writes are limited to 30/minute; administrator writes 90/minute. Reads are
+limited to 120/minute per member. Uploads allow 10/minute per administrator.
+Each member can have at most five unreviewed standalone payment reports and twenty
+unreviewed cash/Cash App purchases. Confirm/reject existing reports to clear the
+backlog. Existing reports are retained, and idempotent checkout retries remain safe.
+These application limits supplement edge protection; they do not replace a WAF,
+Cloudflare Access/MFA, or Turnstile.
+
+Dependency audits deliberately report all remaining advisories. At 2026-09-15,
+image-size 2.0.3 is younger than the configured seven-day release waiting period.
+Its two remaining parser advisories concern the build-time dependency; the app
+has no static JS image imports, and the unused optimizer endpoints are blocked.
+Review and install the patch after the release waiting period. Do not bypass the
+waiting policy or mistake a development dependency classification for proof that
+code cannot be bundled into production.

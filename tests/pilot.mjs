@@ -102,4 +102,12 @@ shirt=await product('test-shirt');await send(owner,{action:'variants',id:shirt.i
 const publicShirt=(await readState(db,bothAdmin)).products.find(p=>p.id===shirt.id);check(publicShirt.option_required,'option requirement persists independently of option visibility');
 await memberChange({snacks:false,gear:true});const hiddenShirt=(await readState(db,user)).products.find(p=>p.id===shirt.id);check(hiddenShirt.option_required&&hiddenShirt.variants.length===0,'hiding all options cannot expose the unassigned base stock as a sale option');
 shirt=await product('test-shirt');const manyOptions=[...shirt.variants.map(v=>({...v,active:false,preorder:!!v.preorder})),...Array.from({length:78},(_,i)=>({label:'Future option '+i,size:String(i),color:'Test',active:false,preorder:true}))];await send(owner,{action:'variants',id:shirt.id,version:shirt.version,variants:manyOptions});check((await product(shirt.id)).variants.length===80,'large preset list is saved in one bounded SQL batch');
+// Session revocation between authorization and transaction commit must win.
+const currentActor=await db.prepare('SELECT id FROM members WHERE user_id=?').bind(owner.userId).first();
+const guardToken='a'.repeat(64);sqlite.prepare('INSERT INTO auth_sessions(token_hash,member_id,created_at,expires_at) VALUES(?,?,?,?)').run(guardToken,currentActor.id,Date.now(),Date.now()+60000);
+const originalBatch=db.batch;let revoked=false;
+db.batch=async statements=>{if(!revoked){revoked=true;sqlite.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(guardToken)}return originalBatch(statements)};
+const priorSettings=JSON.stringify(sqlite.prepare('SELECT * FROM settings').all());
+try{await assert.rejects(()=>mutate(db,{...owner,tokenHash:guardToken},{action:'settings',requestId:crypto.randomUUID(),cashInstructions:'Unauthorised race write',cashtag:'Injected',reminderDays:3}),/record changed/);checks++}finally{db.batch=originalBatch}
+check(JSON.stringify(sqlite.prepare('SELECT * FROM settings').all())===priorSettings,'revoked in-flight session cannot commit a management write');
 console.log(`PASS: ${checks} financial, inventory, access, and idempotency checks.`);

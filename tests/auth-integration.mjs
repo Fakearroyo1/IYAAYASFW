@@ -20,7 +20,7 @@ try{
  r=await req('/api/product-images?id=00000000-0000-4000-8000-000000000000');check(r.status===401,'anonymous image denied');
  r=await req('/api/auth',{action:'login',email:'owner@example.test',password:'test-only-owner-password-123456789'},'','https://other.test');check(r.status===403,'cross-origin login denied');
  r=await req('/api/auth',{action:'login',email:'missing@example.test',password:'wrong-password'});check(r.status===401,'unapproved email denied');
- r=await req('/api/auth',{action:'login',email:'owner@example.test',password:'test-only-owner-password-123456789'});check(r.status===200,'owner bootstrap login succeeds');const owner=cookie(r);check(!!owner,'session issued');check(/Secure; HttpOnly; SameSite=Lax; Max-Age=34560000/.test(r.headers.get('set-cookie')),'secure persistent cookie');
+ r=await req('/api/auth',{action:'login',email:'owner@example.test',password:'test-only-owner-password-123456789'});check(r.status===200,'owner bootstrap login succeeds');const owner=cookie(r);check(!!owner,'session issued');check(/Secure; HttpOnly; SameSite=Lax; Max-Age=2592000/.test(r.headers.get('set-cookie')),'secure persistent cookie');
  r=await req('/api/pilot',null,owner);check(r.status===200,'owner data readable');check((await r.json()).admin,'owner management available');check(!!r.headers.get('set-cookie'),'session renewed during visit');
  r=await req('/api/auth',{action:'password',memberId:'test-member',password:'member-assigned-password-123'},owner);check(r.status===200,'admin assigns password');
  const credential=await db.prepare("SELECT password_hash FROM auth_credentials WHERE member_id='test-member'").first();check(!credential.password_hash.includes('member-assigned'),'password stored as hash');

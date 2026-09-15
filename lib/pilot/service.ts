@@ -1,6 +1,6 @@
 import {catalog} from './catalog';
 import {OWNER_EMAIL} from './owner';
-import {type DB,type Row,PilotError,fail,int,str,uid,ownerAccount,reqId,first,rows,stmt,audit,guard,hash,batchAtomic} from './core';
+import {type DB,type Row,PilotError,fail,int,str,uid,ownerAccount,reqId,first,rows,stmt,audit,guard,hash,batchAtomic,sessionGuard} from './core';
 import {accessFor,canShop} from './access';
 import {catalogState,extendedMutation} from './products';
 import {placeOrder} from './orders';
@@ -28,19 +28,22 @@ export async function readState(db:DB,user:{userId:string;email:string}|null){
   result.admin={orders,payments,members:members.map(member=>({...member,isOwner:ownerAccount(member)})),items,events,expenses,resets,restocks};
  }
 
+ if(m.role!=='admin'){result.orders=result.orders.map(({cost,fingerprint,...order}:Row)=>order);result.items=result.items.map(({cost,...item}:Row)=>item)}
  return result;
 }
 async function duplicate(db:DB,table:'orders'|'payments',id:string,fingerprint:string){const existing=await first(db,`SELECT * FROM ${table} WHERE id=?`,id);if(existing&&existing.fingerprint!==fingerprint)fail('This request identifier has already been used.',409);return existing}
-export async function mutate(db:DB,user:{userId:string;email:string}|null,b:Row){
+export async function mutate(db:DB,user:{userId:string;email:string;tokenHash?:string}|null,b:Row){
  await initialize(db);const m=await identity(db,user);if(!m)fail('Member access is required.',403);const actor=m.id;const admin=()=>{if(m?.role!=='admin')fail('Administrator access is required.',403)};const member=()=>{if(!m)fail('Member access is required.',403);return m!};const settings=(await first(db,"SELECT * FROM settings WHERE id='main'"))!;
  const isAdminAction=!['order','payment'].includes(b.action);const operationId=isAdminAction?reqId(b.requestId):null;const operationFp=isAdminAction?await hash({actor,body:b}):null;
- const atomic=async(db:DB,statements:D1PreparedStatement[])=>batchAtomic(db,isAdminAction?[guard(db,"EXISTS(SELECT 1 FROM members WHERE id=? AND active=1 AND role='admin')",actor),...statements,stmt(db,'INSERT INTO mutations(id,fingerprint) VALUES(?,?)',operationId,operationFp)]:statements);
- if(b.action==='order')return placeOrder(db,m,b,settings);
+ const atomic=async(db:DB,statements:D1PreparedStatement[])=>batchAtomic(db,[...sessionGuard(db,actor,user?.tokenHash),...(isAdminAction?[guard(db,"EXISTS(SELECT 1 FROM members WHERE id=? AND active=1 AND role='admin')",actor),...statements,stmt(db,'INSERT INTO mutations(id,fingerprint) VALUES(?,?)',operationId,operationFp)]:statements)]);
+ if(b.action==='order')return placeOrder(db,m,b,settings,user?.tokenHash);
  if(b.action==='payment'){
   const who=member(),id=reqId(b.id),purpose=str(b.purpose,20),method=str(b.method,20),amount=int(b.amount,1,50000);
   if(!['settlement','topup'].includes(purpose)||!['cash','cashapp'].includes(method))fail('Invalid payment type.');if(method==='cashapp'&&!settings.cashtag)fail('Cash App is not configured yet.');
   const fp=await hash({actor,purpose,method,amount});const old=await duplicate(db,'payments',id,fp);if(old)return{payment:old,replayed:true};
-  const statements=[];if(purpose==='settlement')statements.push(guard(db,"? <= (SELECT debt FROM members WHERE id=?) - COALESCE((SELECT SUM(amount) FROM payments WHERE member_id=? AND purpose='settlement' AND status='pending'),0)",amount,who.id,who.id));
+  const pending=(await first(db,"SELECT COUNT(*) n FROM payments WHERE member_id=? AND order_id IS NULL AND status='pending'",actor))!.n;
+  if(pending>=5)fail('You have five payment reports awaiting review. Ask an administrator to review them before reporting another payment.',429);
+  const statements=[guard(db,"EXISTS(SELECT 1 FROM members WHERE id=? AND active=1) AND (SELECT COUNT(*) FROM payments WHERE member_id=? AND order_id IS NULL AND status='pending')<5",actor,actor)];if(purpose==='settlement')statements.push(guard(db,"? <= (SELECT debt FROM members WHERE id=?) - COALESCE((SELECT SUM(amount) FROM payments WHERE member_id=? AND purpose='settlement' AND status='pending'),0)",amount,who.id,who.id));
   statements.push(stmt(db,'INSERT INTO payments(id,fingerprint,member_id,purpose,method,amount,created_at) VALUES(?,?,?,?,?,?,?)',id,fp,who.id,purpose,method,amount,Date.now()),audit(db,actor,'payment_reported',id,{purpose,method,amount}));
   try{await atomic(db,statements)}catch(e){const old=await duplicate(db,'payments',id,fp);if(old)return{payment:old,replayed:true};throw e}return{payment:await first(db,'SELECT * FROM payments WHERE id=?',id)};
  }
