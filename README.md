@@ -1,44 +1,57 @@
 # IYAAYASFW Supply
 
-Unit store with approved-member access, admin-assigned passwords, durable purchase records, CSV exports, and product-image management.
+A member store for snack bar purchases and unit gear, with durable orders, stock and price management, pickup tracking, and CSV exports. Production is hosted on the existing Cloudflare Worker at iyaayasfw.com; `main` triggers Workers Builds.
 
-**Deployment:** Follow [LAUNCH.md](LAUNCH.md). This branch replaces the earlier Cloudflare Access migration. Neither ChatGPT accounts nor Cloudflare Access are required for members.
+## Member access and passwords
 
-## Access
+- Manage → Members approves an email and grants Snack bar, Unit gear, or both. Existing members default to both without rewriting their records. Gear-only accounts do not receive snack catalog data and cannot purchase snacks through the API.
+- Administrators can manage both shops. The owner grants administrator roles and manages other administrators. The owner cannot be disabled or demoted.
+- New members use **First Time** on the login page. Only an active approved email without a password can proceed. An administrator issues a private setup code from Members and shares it with the intended member. Codes expire after seven days, are stored only as hashes, and are consumed when a password is created. A new code invalidates the previous one. Knowing a whitelisted email alone cannot claim the account.
+- My account → Change password requires the current password. The current device stays signed in; other sessions are revoked.
+- Forgot password creates one pending in-app request per active account. Administrators review requests in Members, assign a replacement privately, and the request is resolved automatically. Requests do not themselves grant access. An administrator can dismiss a request without changing a password.
+- Passwords use scrypt (N=16384, r=8, p=5), 15–128 characters, and are never stored in plaintext or returned. Setup codes and passwords are absent from audit logs.
+- Sessions use random 256-bit tokens stored only as hashes, with Secure, HttpOnly, SameSite=Lax, host-only cookies. Password replacement, role/access changes, deactivation, device revocation, and logout invalidate sessions as appropriate.
+- Authentication has per-IP and per-account limits. Mutations require same-origin requests. Authorization is enforced again within write transactions.
 
-- Administrators create members in Manage → Members and assign passwords separately. No public registration or password-change endpoint exists.
-- The owner can select Member or Administrator when editing a member. Administrators manage the shop, inventory, payments, reports, and regular members. Only the owner can grant or remove administrator access or manage another administrator. The owner cannot be disabled or demoted. Role changes revoke existing device sessions; the assigned password remains valid.
-- Passwords are scrypt hashes (N=16384, r=8, p=5); plaintext is not stored or returned. Minimum length: 15 characters.
-- Sessions use random 256-bit tokens; only token hashes are stored. Secure, HttpOnly, SameSite=Lax, host-only cookies persist for up to 400 days and renew on authenticated store API visits. Browser removal or expiry can still require sign-in.
-- Password replacement, account deactivation, device revocation, and logout invalidate sessions. Deactivation deletes sessions so reactivation cannot restore old devices.
-- Login limits apply to IP addresses and email addresses. Mutations require same-origin requests. Every store API and uploaded-image request checks identity on the server.
-- Membership requests are closed. The member table and admin enrollment remain the approval mechanism; a future request queue must never automatically grant access.
-- No real credentials or records snapshot belongs in this public repository. Owner identity and bootstrap credentials must be configured as Cloudflare secrets. The D1 database ID is supplied through a private build variable.
+## Gear and inventory
 
-## Development
+- Inventory manages product information, stock, and availability. Selling prices and costs have their own Pricing hub.
+- Gear tiles open `/products/:id`, with a main image, up to eight additional images, description, options, personalization, and pickup instructions.
+- Manage gear includes shirt, hoodie, and name-tape option presets plus custom sizes/colors. Options can have their own prices, stock, and preorder status. A blank option price inherits the base price.
+- New options start at zero stock. Existing product stock remains unassigned until explicitly allocated to an option. Allocation transfers units without creating an expense or duplicating stock.
+- Receive records new stock and allocated receipt cost, including freight, purchase tax/fees, and discounts. Weighted cost remains unknown when existing units have unknown cost.
+- Gear order lines retain the purchased option label, personalization, quantity, unit price, cost, and tax. Later product changes do not rewrite them. Voiding a pending purchase restores the correct option's stock.
+- Manage → Pickups tracks awaiting stock, ready for pickup, and picked up. Payment is separate; an order must be paid before pickup can be marked complete. Existing gear orders are not backfilled or assumed fulfilled.
+- Archive hides products without deleting stock or purchase history. Existing options can be hidden rather than deleted.
+
+## Pricing and reports
+
+- Pricing compares recorded unit cost with an adjustable case/quantity/landed-cost calculator. Suggested prices use gross margin after included sales tax.
+- Snack price changes round **up** to $0.25 increments. Existing prices stay unchanged until an administrator explicitly applies a new price.
+- Applying a price never changes inventory or past orders. Updating recorded cost is a separate opt-in for future purchases.
+- Item performance uses original order-item snapshots, excludes voids, distinguishes paid-order sales, and shows sales tax, restock spending, and price/restock history by date range. Unknown historical cost is identified; it is not estimated from current cost. Sales can include unpaid and unfulfilled preorders.
+- CSV exports include item options, personalization, pickup status, purchasing permissions, and an option-inventory snapshot. Text is escaped to prevent spreadsheet formula injection.
+
+## Deployment and preservation
+
+Follow [LAUNCH.md](LAUNCH.md) for account setup. No real credentials or production-record snapshot belongs in this public repository. Keep OWNER_EMAIL and authentication secrets in Worker runtime settings. CLOUDFLARE_D1_DATABASE_ID remains a private build variable.
+
+`pnpm run deploy` executes only the idempotent `AUTH-SCHEMA.sql` and `PRODUCT-SCHEMA.sql` tables/indexes before deploying. It does not import a database snapshot, seed records, change existing prices, or reopen the shop. `SHOP-READY.sql` is an earlier one-time repair and is no longer executed by deployment. Never rerun the initial `drizzle` schema on an initialized production database.
+
+Order and option writes use JSON batches to keep larger orders within [D1's query limits](https://developers.cloudflare.com/d1/platform/limits/). Stock and authorization guards execute in the same transaction as writes. Purchase requests and administrative mutations retain idempotency identifiers.
+
+## Development and verification
 
 Use Node 22.13+ and the pnpm version pinned in package.json.
 
 ```
 pnpm install --frozen-lockfile
 pnpm run typecheck
+node tests/pilot.mjs
 pnpm run build
-node tests/auth-integration.mjs
+TMPDIR=/dev/shm node tests/auth-integration.mjs
 ```
 
-The integration suite runs the compiled Worker with isolated D1/R2 storage. On filesystems that cannot fsync temporary SQLite files, set TMPDIR to a suitable local filesystem (for example /dev/shm on Linux).
+Tests use synthetic isolated SQLite or Workers D1/R2 storage and never connect to production. They cover preservation across repeated schema application, access restrictions, setup-code activation, password changes and recovery, pricing calculations, option stock, personalization, order retries, voids, and pickup/payment separation.
 
-`pnpm run deploy` adds only the idempotent tables/indexes from AUTH-SCHEMA.sql to the existing D1 database and deploys the Worker. It does not reset/import the store database. Do not use the original schema migrations on an already initialized database.
-
-The deployment serves iyaayasfw.com and retains the workers.dev address as a fallback.
-
-## Shop controls
-
-- Use Open shop / Pause shop on the Shop page or under Manage. Payment settings are saved separately and do not change whether the shop is open.
-- Only available, priced products with a tax rate and positive stock (or a gear preorder) can be purchased. Hidden products remain in Inventory. Out-of-stock items show their status.
-- SHOP-READY.sql is a one-time correction for the configured catalog imported with checkout paused. It opens the shop only if a sellable product exists, records the change, and preserves product counts, prices, balances, and credentials. Its migration marker prevents later deployments from reopening an intentionally paused shop.
-- New members are taken directly to password assignment after saving. Contact actions and device sign-out live within Edit member.
-
-Verification: run `node tests/pilot.mjs`, `node tests/shop-migration.mjs`, and (after building) `TMPDIR=/dev/shm node tests/auth-integration.mjs`. Tests use isolated records and never connect to the production database.
-
-Product images are stored as small base64 parts under `asset-source/` to support reliable source transfers. The build restores the original files and verifies their SHA-256 checksums before compiling.
+Product images under `asset-source/` are restored and checksum-verified during each build. Uploaded product photos remain in the existing R2 bucket.

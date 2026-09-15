@@ -1,5 +1,6 @@
 import {env} from 'cloudflare:workers';
 import {getUser} from '@/app/auth';
+import {accessFor,canShop} from '@/lib/pilot/access';
 import {identity} from '@/lib/pilot/service';
 export const dynamic='force-dynamic';
 const json=(error:string,status:number)=>Response.json({error},{status});
@@ -22,9 +23,11 @@ export async function POST(request:Request){
 }
 export async function GET(request:Request){
  try{
-  if(!await getUser())return new Response(null,{status:401});
+  const user=await getUser();if(!user)return new Response(null,{status:401});
   const id=new URL(request.url).searchParams.get('id')||'';if(!/^[a-f0-9-]{36}$/.test(id))return new Response(null,{status:404});
-  if(!env.BUCKET)return new Response(null,{status:503});
+  if(!env.BUCKET||!env.DB)return new Response(null,{status:503});
+  const member=await identity(env.DB,user);if(!member)return new Response(null,{status:403});
+  if(member.role!=='admin'){const access=await accessFor(env.DB,member as any),path='/api/product-images?id='+id;const matches=await env.DB.prepare("SELECT p.category FROM products p LEFT JOIN product_details d ON d.product_id=p.id WHERE p.active=1 AND COALESCE(d.archived,0)=0 AND (p.image=? OR EXISTS(SELECT 1 FROM json_each(COALESCE(d.images,'[]')) WHERE value=?))").bind(path,path).all<{category:string}>();if(!matches.results.some(p=>canShop(member as any,access,p.category)))return new Response(null,{status:404})}
   const object=await env.BUCKET.get('products/'+id);if(!object)return new Response(null,{status:404});
   return new Response(object.body,{headers:{'Content-Type':object.httpMetadata?.contentType||'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}});
  }catch{return new Response(null,{status:503})}

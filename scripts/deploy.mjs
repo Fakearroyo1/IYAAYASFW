@@ -8,7 +8,7 @@ const config=JSON.parse(readFileSync(configPath,'utf8'));
 config.d1_databases.find(d=>d.binding==='DB').database_id=id;
 writeFileSync(configPath,JSON.stringify(config));
 const wrangler=fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js',import.meta.url));
-for(const args of [ ['d1','execute','iyaayasfw-supply-db','--remote','--file','AUTH-SCHEMA.sql','--config',configPath], ['d1','execute','iyaayasfw-supply-db','--remote','--file','SHOP-READY.sql','--config',configPath], ['deploy','--config',configPath] ]){
+for(const args of [ ['d1','execute','iyaayasfw-supply-db','--remote','--file','AUTH-SCHEMA.sql','--config',configPath], ['d1','execute','iyaayasfw-supply-db','--remote','--file','PRODUCT-SCHEMA.sql','--config',configPath], ['deploy','--config',configPath] ]){
  const result=spawnSync(process.execPath,[wrangler,...args],{stdio:'inherit',env:{...process.env,CI:'true'}});
  if(result.error)throw result.error;if(result.status!==0)process.exit(result.status??1);
 }

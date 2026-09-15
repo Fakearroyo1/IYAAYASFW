@@ -23,7 +23,7 @@ Password hashing requires more CPU than the Workers Free per-request allowance. 
 
 1. Cloudflare → Workers & Pages → Create application → Import a repository.
 2. Connect GitHub and select Fakearroyo1/IYAAYASFW.
-3. Select the branch **cloudflare-password-login** (production branch). If the wizard only offers main, change the branch under Settings → Builds before deploying this project.
+3. Select the branch **main** (production branch). If the wizard only offers main, change the branch under Settings → Builds before deploying this project.
 4. Worker name: iyaayasfw-supply.
 5. Build command: `pnpm run build`.
 6. Deploy command: `pnpm run deploy`.
@@ -53,13 +53,13 @@ Do not configure Cloudflare Access in front of this Worker for member login. If 
 
 1. Manage → Members → Add member.
 2. Enter their name and approved email, configure any opening balance with its source/reason, and save.
-3. Select Assign password. Set a unique password of at least 15 characters and share it privately with the member.
+3. Select Setup code. Generate a private code and share it directly with the intended member. They select First Time, enter their whitelisted email and setup code, and choose a password of at least 15 characters.
 4. Test sign-in on another device. Verify the member sees only their own balance and purchases, and cannot see Manage.
 5. Close/reopen the browser and confirm the session persists.
 6. Test Sign out devices and confirm a new sign-in is required.
 7. Test disabling the account and confirm it cannot sign in.
 
-The account manager can replace passwords without retrieving old passwords. Members do not set their own passwords. Membership requests remain closed.
+Members can change their password from My account after providing the current password. Forgot password sends a request to the in-app admin queue. Administrators can replace a forgotten password without retrieving the old one. Purchasing access is configured separately for Snack bar and Unit gear.
 
 ## 5. Refresh records and switch the domain
 
