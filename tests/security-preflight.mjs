@@ -28,15 +28,16 @@ for(const bad of [{...policy,decision:'bypass'},{...policy,include:[{everyone:{}
 }
 const config={name:'iyaayasfw-supply',workers_dev:false,preview_urls:false,routes:[{pattern:'iyaayasfw.com',custom_domain:true}]};
 const testSiteKey='0'.repeat(16);
+const testAppId='00000000-0000-4000-8000-000000000000';
 const bindings=[
- ...Object.entries({ADMIN_ACCESS_TEAM_DOMAIN:issuer,ADMIN_ACCESS_AUD:audience,ADMIN_ACCESS_APP_ID:'5582a373-919d-44d6-960f-fb2b43f46892',TURNSTILE_SITE_KEY:testSiteKey}).map(([name,text])=>({name,type:'plain_text',text})),
+ ...Object.entries({ADMIN_ACCESS_TEAM_DOMAIN:issuer,ADMIN_ACCESS_AUD:audience,ADMIN_ACCESS_APP_ID:testAppId,TURNSTILE_SITE_KEY:testSiteKey}).map(([name,text])=>({name,type:'plain_text',text})),
  {name:'TURNSTILE_SECRET_KEY',type:'secret_text'},{name:'OWNER_EMAIL',type:'secret_text'},
  {name:'DB',id:'ed7e63c8-77fd-4314-ab35-131c061e016a'},{name:'BUCKET',bucket_name:'iyaayasfw-supply-images'}
 ];
 const replies=new Map([
  ['/workers/scripts/iyaayasfw-supply/settings',{bindings}],
- ['/access/apps/5582a373-919d-44d6-960f-fb2b43f46892',app],
- ['/access/apps/5582a373-919d-44d6-960f-fb2b43f46892/policies',[policy]],
+ ['/access/apps/'+testAppId,app],
+ ['/access/apps/'+testAppId+'/policies',[policy]],
  ['/access/organizations',organization],
  ['/challenges/widgets/'+testSiteKey,{mode:'managed',domains:['iyaayasfw.com']}],
  ['/r2/buckets/iyaayasfw-supply-images/domains/managed',{enabled:false}],

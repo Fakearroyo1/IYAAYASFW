@@ -3,8 +3,9 @@
 # Current tests generate this value per run. This exception covers only the
 # exact historical finding; other commits, lines, files and rules remain scanned.
 c958f2e11e3b51c8abdd7f12a3e2d025794ff5b6:tests/hardening.mjs:generic-api-key:21
-# Reviewed false positive: mock public Turnstile site key and public application
-# identifiers in the read-only preflight fixture. No real token or widget secret
-# exists in this fixture. The mock site key now uses a generated zero placeholder.
-# Limit this exception to the exact historical commit/file/rule/line.
+# Reviewed false positives: public Access application identifier in the read-only
+# preflight fixture. No real token or widget secret exists in this fixture.
+# The fixture now uses a zero-based synthetic UUID and generated mock site key.
+# Limit these exceptions to the exact historical commits/files/rules/lines.
 b905b0cb9e1226ebae80b605709668a7b412a3ed:tests/security-preflight.mjs:generic-api-key:31
+248538e32036b421943cb1561f75ab480dee7044:tests/security-preflight.mjs:generic-api-key:32
