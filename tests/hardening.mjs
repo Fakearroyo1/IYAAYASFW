@@ -7,6 +7,7 @@ import {resolve} from 'node:path';
 import {generateKeyPair,exportJWK,SignJWT} from 'jose';
 import {challengeBindings,challengeService} from './security-fixtures.mjs';
 import {validateAccess,preflight} from '../scripts/security-preflight.mjs';
+import './security-preflight.mjs';
 const require=createRequire(import.meta.url),{Miniflare}=require(require.resolve('miniflare',{paths:[require.resolve('wrangler/package.json')]}));
 const {publicKey,privateKey}=await generateKeyPair('RS256');const jwk=await exportJWK(publicKey);jwk.kid='fixture-key';
 const issuer='https://security-test.cloudflareaccess.com',audience='fixture-admin-audience';
