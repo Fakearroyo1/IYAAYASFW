@@ -1,0 +1,30 @@
+{
+  "host": "iyaayasfw.com",
+  "accessApplication": {
+    "name": "IYAAYASFW administrator verification",
+    "type": "self_hosted",
+    "domain": "iyaayasfw.com/api/admin/access",
+    "session_duration": "30m",
+    "app_launcher_visible": false,
+    "http_only_cookie_attribute": true,
+    "same_site_cookie_attribute": "lax"
+  },
+  "accessAllowPolicyTemplate": {
+    "name": "Approved administrators with independent MFA",
+    "decision": "allow",
+    "include": [{"email": {"email": "REPLACE_WITH_APPROVED_ADMIN_EMAIL"}}],
+    "session_duration": "30m",
+    "mfa_config": {"mfa_disabled": false, "session_duration": "30m", "allowed_authenticators": ["security_key", "biometrics"]}
+  },
+  "turnstileWidget": {"name": "IYAAYASFW member authentication", "domains": ["iyaayasfw.com"], "mode": "managed"},
+  "edgeRateLimitCandidate": {
+    "description": "Bound public authentication bursts; confirm shared-unit NAT traffic before enforcement",
+    "expression": "http.host eq \"iyaayasfw.com\" and http.request.uri.path eq \"/api/auth\" and http.request.method eq \"POST\"",
+    "action": "block",
+    "ratelimit": {"characteristics": ["cf.colo.id", "ip.src"], "period": 10, "requests_per_period": 30, "mitigation_timeout": 10}
+  },
+  "transportTargets": {"min_tls_version": "1.2", "always_use_https": "on", "tls_1_3": "on"},
+  "bucketTargets": {"managedPublicAccess": false, "customPublicDomains": false},
+  "pagesTarget": "Disable build/deploy integration for unused iyaayasfw Pages project; remove production credentials and bindings after confirming it is not the Worker production path.",
+  "alerts": {"workerErrors": "Investigate sustained >1% errors over 5 minutes", "usage": "Notify at 50%, 75%, 90% of plan quotas", "security": "Investigate unexpected admin enrollment/recovery, role changes, WAF blocks, and auth throttling"}
+}

@@ -1,8 +1,9 @@
-import {type DB,type Row,fail,int,str,uid,reqId,first,rows,stmt,audit,guard,hash,batchAtomic} from './core';
+import {type DB,type Row,fail,int,str,uid,reqId,first,rows,stmt,audit,guard,hash,batchAtomic,sessionGuard} from './core';
 import {accessFor,canShop} from './access';
-export async function placeOrder(db:DB,m:Row,b:Row,settings:Row){
+export async function placeOrder(db:DB,m:Row,b:Row,settings:Row,tokenHash?:string){
  const actor=m.id,id=reqId(b.id),method=str(b.method,20);if(!['cash','cashapp','tab','credit'].includes(method))fail('Choose an available payment method.');
  const payer=m.name;if(!Array.isArray(b.items)||!b.items.length||b.items.length>30)fail('Select between 1 and 30 products.');
+ if(b.items.some((item:unknown)=>!item||typeof item!=='object'||Array.isArray(item)))fail('Select valid products.');
  const items=b.items.map((v:Row)=>({id:str(v.id,80),qty:int(v.qty,1,30),price:int(v.price,1,100000),...(v.variantId?{variantId:str(v.variantId,80)}:{}),...(v.personalization?{personalization:str(v.personalization,80)}:{})})).sort((a:Row,c:Row)=>a.id.localeCompare(c.id)||JSON.stringify(a).localeCompare(JSON.stringify(c)));
  const key=(i:Row)=>JSON.stringify([i.id,i.variantId||'',i.personalization||'']);if(new Set(items.map(key)).size!==items.length)fail('Combine duplicate products and options in the basket.');
  const fp=await hash({actor,payer,method,items});const duplicate=async()=>{const old=await first(db,'SELECT * FROM orders WHERE id=?',id);if(old&&old.fingerprint!==fp)fail('This request identifier has already been used.',409);return old};const old=await duplicate();if(old)return{order:old,replayed:true};
@@ -20,14 +21,16 @@ export async function placeOrder(db:DB,m:Row,b:Row,settings:Row){
   return{...p,price,cost:unitCost,preorder,qty:item.qty,variant,personalization:item.personalization||''};
  });
  if(total>50000)fail('Keep each purchase under $500.');
+ if(['cash','cashapp'].includes(method)&&(await first(db,"SELECT COUNT(*) n FROM orders WHERE member_id=? AND status='pending'",actor))!.n>=20)fail('You have twenty purchases awaiting payment review. Ask an administrator to review them before placing another unpaid order.',429);
  const time=Date.now(),code='SB-'+id.slice(0,8).toUpperCase(),status=method==='tab'?'tab':method==='credit'?'paid':'pending';
  // JSON batches keep larger group orders within the Free plan's query budget.
  const packet=JSON.stringify(lines.map(p=>({...p,itemId:uid(),variantId:p.variant?.id||'',variantVersion:p.variant?.version??0,variantLabel:p.variant?.label||'',stockQty:quantities.get(p.variant?'v:'+p.variant.id:'p:'+p.id)})));
- const statements=[guard(db,"EXISTS(SELECT 1 FROM settings WHERE id='main' AND enabled=1)"),guard(db,"EXISTS(SELECT 1 FROM members m LEFT JOIN member_access a ON a.member_id=m.id WHERE m.id=? AND m.active=1 AND (?=0 OR m.role='admin' OR COALESCE(a.snacks,1)=1) AND (?=0 OR m.role='admin' OR COALESCE(a.gear,1)=1))",actor,lines.some(p=>p.category!=='Gear')?1:0,lines.some(p=>p.category==='Gear')?1:0),
+ const statements=[...sessionGuard(db,actor,tokenHash),guard(db,"EXISTS(SELECT 1 FROM settings WHERE id='main' AND enabled=1)"),guard(db,"EXISTS(SELECT 1 FROM members m LEFT JOIN member_access a ON a.member_id=m.id WHERE m.id=? AND m.active=1 AND (?=0 OR m.role='admin' OR COALESCE(a.snacks,1)=1) AND (?=0 OR m.role='admin' OR COALESCE(a.gear,1)=1))",actor,lines.some(p=>p.category!=='Gear')?1:0,lines.some(p=>p.category==='Gear')?1:0),
  guard(db,`NOT EXISTS(SELECT 1 FROM json_each(?) j LEFT JOIN products p ON p.id=json_extract(j.value,'$.id') LEFT JOIN product_details d ON d.product_id=p.id WHERE p.id IS NULL OR p.active<>1 OR p.version<>json_extract(j.value,'$.version') OR COALESCE(d.archived,0)<>0 OR (json_extract(j.value,'$.variantId')='' AND (EXISTS(SELECT 1 FROM product_variants v WHERE v.product_id=p.id) OR (p.preorder=0 AND p.stock<json_extract(j.value,'$.stockQty')))))`,packet),
  guard(db,`NOT EXISTS(SELECT 1 FROM json_each(?) j LEFT JOIN product_variants v ON v.id=json_extract(j.value,'$.variantId') AND v.product_id=json_extract(j.value,'$.id') WHERE json_extract(j.value,'$.variantId')<>'' AND (v.id IS NULL OR v.active<>1 OR v.version<>json_extract(j.value,'$.variantVersion') OR (v.preorder=0 AND v.stock<json_extract(j.value,'$.stockQty'))))`,packet),
  stmt(db,`UPDATE products SET stock=stock-(SELECT SUM(json_extract(value,'$.qty')) FROM json_each(?) WHERE json_extract(value,'$.id')=products.id AND json_extract(value,'$.variantId')='' AND json_extract(value,'$.preorder')=0) WHERE id IN(SELECT json_extract(value,'$.id') FROM json_each(?) WHERE json_extract(value,'$.variantId')='' AND json_extract(value,'$.preorder')=0)`,packet,packet),
  stmt(db,`UPDATE product_variants SET stock=stock-(SELECT SUM(json_extract(value,'$.qty')) FROM json_each(?) WHERE json_extract(value,'$.variantId')=product_variants.id AND json_extract(value,'$.preorder')=0) WHERE id IN(SELECT json_extract(value,'$.variantId') FROM json_each(?) WHERE json_extract(value,'$.variantId')<>'' AND json_extract(value,'$.preorder')=0)`,packet,packet)];
+ if(status==='pending')statements.unshift(guard(db,"(SELECT COUNT(*) FROM orders WHERE member_id=? AND status='pending')<20",actor));
  if(method==='tab')statements.push(guard(db,'EXISTS(SELECT 1 FROM members WHERE id=? AND active=1 AND debt+?<=tab_limit)',actor,total),stmt(db,'UPDATE members SET due_since=CASE WHEN debt=0 THEN ? ELSE due_since END,debt=debt+? WHERE id=?',time,total,actor));
  if(method==='credit')statements.push(guard(db,'EXISTS(SELECT 1 FROM members WHERE id=? AND active=1 AND credit>=?)',actor,total),stmt(db,'UPDATE members SET credit=credit-? WHERE id=?',total,actor));
  statements.push(stmt(db,'INSERT INTO orders(id,code,fingerprint,member_id,payer,method,total,tax,cost,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',id,code,fp,actor,payer,method,total,tax,cost,status,time));
