@@ -32,6 +32,9 @@ jobs:
       - run: pnpm run build
       - run: node tests/auth-integration.mjs
       - run: node tests/security.mjs
+      - run: node tests/hardening.mjs
+      - run: node tests/image-parsers.mjs
+      - run: node tests/backup.mjs
   dependency-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -46,7 +49,20 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '22'
-      # Deliberately fails on remaining/new high advisories, including the
-      # image-size patch that is awaiting the existing release-age policy.
       - run: pnpm audit --audit-level high
 
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install checksum-pinned Gitleaks
+        run: |
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output "$RUNNER_TEMP/gitleaks.tar.gz"
+          printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan complete available Git history with secrets redacted
+        run: '"$RUNNER_TEMP/gitleaks" git --redact --no-banner --log-opts="--all" .'

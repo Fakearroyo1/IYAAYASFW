@@ -214,3 +214,5 @@ fieldset:disabled{opacity:.72}
  .compact-stats .stat b{font-size:24px}
  .field input,.field textarea,.field select{font-size:16px}
 }
+
+.history-pager{display:flex;align-items:center;gap:16px;margin-top:20px;flex-wrap:wrap}.security-challenge{max-width:100%;margin:16px 0}.login-actions{flex-wrap:wrap}

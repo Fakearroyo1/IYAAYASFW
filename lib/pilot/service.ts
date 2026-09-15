@@ -1,3 +1,4 @@
+import {historyPage,itemsForOrders,adminSummary,type HistoryOptions} from './history';
 import {catalog} from './catalog';
 import {OWNER_EMAIL} from './owner';
 import {type DB,type Row,PilotError,fail,int,str,uid,ownerAccount,reqId,first,rows,stmt,audit,guard,hash,batchAtomic,sessionGuard} from './core';
@@ -16,26 +17,32 @@ export async function identity(db:DB,user:{userId:string;email:string}|null){
  if(!m){const invite=await first(db,'SELECT * FROM members WHERE email=? AND user_id IS NULL AND active=1',user.email.toLowerCase());if(invite){await stmt(db,'UPDATE members SET user_id=? WHERE id=? AND user_id IS NULL',user.userId,invite.id).run();m=await first(db,'SELECT * FROM members WHERE user_id=?',user.userId)}}
  return m?.active?m:null;
 }
-export async function readState(db:DB,user:{userId:string;email:string}|null){
+export async function readState(db:DB,user:{userId:string;email:string}|null,options:HistoryOptions&{view?:string;section?:string;includeAdmin?:boolean}={}){
  await initialize(db);const m=await identity(db,user);if(!m)fail('Member access is required.',403);const settings=await first(db,"SELECT * FROM settings WHERE id='main'");
- const access=await accessFor(db,m as any),products=await catalogState(db,m,access);
- const result:Row={settings,products,member:{...m,...access,isOwner:ownerAccount(m)},signedIn:!!user,processor:{connected:false,provider:'none'},orders:await rows(db,'SELECT * FROM orders WHERE member_id=? ORDER BY created_at DESC',m.id),payments:await rows(db,'SELECT * FROM payments WHERE member_id=? ORDER BY created_at DESC',m.id)};
- const itemSql="SELECT i.*,d.variant_id,d.variant_label,d.personalization,d.fulfillment,d.updated_at fulfillment_updated_at FROM order_items i LEFT JOIN order_item_details d ON d.item_id=i.id";
- result.items=await rows(db,itemSql+' JOIN orders o ON o.id=i.order_id WHERE o.member_id=?',m.id);
- if(m.role==='admin'){
-  const [orders,payments,members,items,events,expenses,resets,restocks]=await Promise.all([
-   rows(db,'SELECT * FROM orders ORDER BY created_at DESC'),rows(db,'SELECT p.*,m.name member_name,o.code order_code,o.payer FROM payments p LEFT JOIN members m ON m.id=p.member_id LEFT JOIN orders o ON o.id=p.order_id ORDER BY p.created_at DESC'),rows(db,"SELECT m.*,COALESCE(a.snacks,1) snacks,COALESCE(a.gear,1) gear,EXISTS(SELECT 1 FROM auth_credentials c WHERE c.member_id=m.id) AS password_set,s.expires_at setup_expires_at FROM members m LEFT JOIN member_access a ON a.member_id=m.id LEFT JOIN auth_setup s ON s.member_id=m.id ORDER BY name"),rows(db,itemSql),rows(db,'SELECT * FROM audit ORDER BY created_at DESC'),rows(db,'SELECT * FROM expenses ORDER BY created_at DESC'),rows(db,"SELECT r.*,m.name,m.email FROM password_reset_requests r JOIN members m ON m.id=r.member_id WHERE r.status='pending' ORDER BY r.created_at"),rows(db,'SELECT * FROM restock_entries ORDER BY created_at DESC')]);
-  result.admin={orders,payments,members:members.map(member=>({...member,isOwner:ownerAccount(member)})),items,events,expenses,resets,restocks};
+ const includeAdmin=m.role==='admin'&&options.includeAdmin===true,view=options.view||'account',section=options.section||'overview';
+ const access=m.role==='admin'?{snacks:1,gear:1}:await accessFor(db,m as any),products=await catalogState(db,includeAdmin?m:{...m,role:'member'},access);
+ const result:Row={settings,products,member:{...m,...access,isOwner:ownerAccount(m)},signedIn:true,adminVerified:includeAdmin,adminLocked:m.role==='admin'&&!includeAdmin,updatedAt:Date.now(),processor:{connected:false,provider:'none'},orders:[],payments:[],items:[],pages:{}};
+ if(view!=='catalog'){
+  const [orders,payments,pending]=await Promise.all([historyPage(db,m,'orders'),historyPage(db,m,'payments'),first(db,"SELECT COALESCE(SUM(amount),0) amount FROM payments WHERE member_id=? AND purpose='settlement' AND status='pending'",m.id)]);
+  result.orders=orders.records;result.payments=payments.records;result.items=await itemsForOrders(db,orders.records);result.pendingSettlement=pending!.amount;result.pages={orders:orders.nextCursor,payments:payments.nextCursor};
  }
-
- if(m.role!=='admin'){result.orders=result.orders.map(({cost,fingerprint,...order}:Row)=>order);result.items=result.items.map(({cost,...item}:Row)=>item)}
+ if(includeAdmin&&view!=='catalog'){
+  const a:Row={orders:[],payments:[],members:[],items:[],events:[],expenses:[],resets:[],restocks:[],pages:{},summary:await adminSummary(db)};
+  const orders=await historyPage(db,m,'orders',{admin:true,limit:section==='overview'?8:50});a.orders=orders.records;a.pages.orders=orders.nextCursor;
+  if(section==='payments'){const page=await historyPage(db,m,'payments',{...options,admin:true});a.payments=page.records;a.pages.payments=page.nextCursor}
+  if(section==='members'){const page=await historyPage(db,m,'members',{...options,admin:true});a.members=page.records;a.pages.members=page.nextCursor}
+  if(section==='activity'){const page=await historyPage(db,m,'events',{admin:true});a.events=page.records;a.pages.events=page.nextCursor}
+  const resets=await historyPage(db,m,'resets',{admin:true});a.resets=resets.records;a.pages.resets=resets.nextCursor;
+  a.resetCount=(await first(db,"SELECT COUNT(*) n FROM password_reset_requests WHERE status='pending'"))!.n;
+  result.admin=a;
+ }
  return result;
 }
 async function duplicate(db:DB,table:'orders'|'payments',id:string,fingerprint:string){const existing=await first(db,`SELECT * FROM ${table} WHERE id=?`,id);if(existing&&existing.fingerprint!==fingerprint)fail('This request identifier has already been used.',409);return existing}
 export async function mutate(db:DB,user:{userId:string;email:string;tokenHash?:string}|null,b:Row){
  await initialize(db);const m=await identity(db,user);if(!m)fail('Member access is required.',403);const actor=m.id;const admin=()=>{if(m?.role!=='admin')fail('Administrator access is required.',403)};const member=()=>{if(!m)fail('Member access is required.',403);return m!};const settings=(await first(db,"SELECT * FROM settings WHERE id='main'"))!;
  const isAdminAction=!['order','payment'].includes(b.action);const operationId=isAdminAction?reqId(b.requestId):null;const operationFp=isAdminAction?await hash({actor,body:b}):null;
- const atomic=async(db:DB,statements:D1PreparedStatement[])=>batchAtomic(db,[...sessionGuard(db,actor,user?.tokenHash),...(isAdminAction?[guard(db,"EXISTS(SELECT 1 FROM members WHERE id=? AND active=1 AND role='admin')",actor),...statements,stmt(db,'INSERT INTO mutations(id,fingerprint) VALUES(?,?)',operationId,operationFp)]:statements)]);
+ const atomic=async(db:DB,statements:D1PreparedStatement[])=>batchAtomic(db,[...sessionGuard(db,actor,user?.tokenHash,isAdminAction),...(isAdminAction?[guard(db,"EXISTS(SELECT 1 FROM members WHERE id=? AND active=1 AND role='admin')",actor),...statements,stmt(db,'INSERT INTO mutations(id,fingerprint) VALUES(?,?)',operationId,operationFp)]:statements)]);
  if(b.action==='order')return placeOrder(db,m,b,settings,user?.tokenHash);
  if(b.action==='payment'){
   const who=member(),id=reqId(b.id),purpose=str(b.purpose,20),method=str(b.method,20),amount=int(b.amount,1,50000);

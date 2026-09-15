@@ -4,18 +4,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 const out=path.resolve('.sites-runtime/pilot-tests');fs.mkdirSync(out,{recursive:true});
-for(const name of ['catalog','owner','core','access','products','orders','service','pricing']){const source=fs.readFileSync(`lib/pilot/${name}.ts`,'utf8');const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from '(\.\/[^']+)'/g,"from '$1.mjs'");fs.writeFileSync(`${out}/${name}.mjs`,code)}
+for(const name of ['catalog','owner','core','access','products','orders','service','pricing','history']){const source=fs.readFileSync(`lib/pilot/${name}.ts`,'utf8');const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from '(\.\/[^']+)'/g,"from '$1.mjs'");fs.writeFileSync(`${out}/${name}.mjs`,code)}
 fs.writeFileSync(`${out}/owner.mjs`,"export const OWNER_EMAIL='owner@example.test';");
 const {mutate,readState}=await import(`${out}/service.mjs`);const {OWNER_EMAIL}=await import(`${out}/owner.mjs`);
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');for(const file of fs.readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())sqlite.exec(fs.readFileSync('drizzle/'+file,'utf8'));
 sqlite.exec(fs.readFileSync('AUTH-SCHEMA.sql','utf8'));
 sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));
+sqlite.exec(fs.readFileSync('SECURITY-SCHEMA.sql','utf8'));
 class Statement{constructor(sql,v=[]){this.sql=sql;this.v=v}bind(...v){return new Statement(this.sql,v)}async first(){return sqlite.prepare(this.sql).get(...this.v)||null}async all(){return{results:sqlite.prepare(this.sql).all(...this.v)}}async run(){return sqlite.prepare(this.sql).run(...this.v)}}
 const db={prepare:sql=>new Statement(sql),batch:async statements=>{sqlite.exec('BEGIN');try{const results=[];for(const s of statements)results.push(await s.run());sqlite.exec('COMMIT');return results}catch(e){sqlite.exec('ROLLBACK');throw e}}};
 const owner={userId:'owner-user',email:OWNER_EMAIL},user={userId:'test-member',email:'pilot@example.test'};let checks=0;
 const check=(v,m)=>{assert.ok(v,m);checks++};
 const send=(u,b)=>mutate(db,u,{requestId:crypto.randomUUID(),...b});
-const state=()=>readState(db,owner);
+const state=async()=>{const s=await readState(db,owner,{view:'admin',section:'activity',includeAdmin:true});const {historyPage,itemsForOrders}=await import(`${out}/history.mjs`);s.admin.members=(await historyPage(db,s.member,'members',{admin:true})).records;s.admin.payments=(await historyPage(db,s.member,'payments',{admin:true})).records;s.admin.items=await itemsForOrders(db,s.admin.orders,true);s.admin.restocks=(await db.prepare('SELECT * FROM restock_entries').all()).results;return s};
 const product=async(id='monster')=>(await state()).products.find(p=>p.id===id);
 const order=(method,qty=1,id=crypto.randomUUID(),productId='monster',price=250)=>({action:'order',id,method,items:[{id:productId,qty,price}]});
 const configure=async(id,stock=20,category='Drinks',preorder=false)=>{const p=await product(id);await send(owner,{action:'product',id,name:p.name,category,detail:p.detail,price:250,cost:100,taxBp:0,stock,previousStock:p.stock,version:p.version,reorder:3,active:true,preorder,reason:'Verified test count'})};
@@ -52,7 +53,9 @@ check((await state()).admin.events.length>10,'Audit trail persists');
 // Additive migrations leave every existing record unchanged, even when reapplied.
 const legacyTables=['products','members','settings','orders','order_items','payments','expenses','audit','auth_credentials','auth_sessions'];
 const snapshot=()=>JSON.stringify(Object.fromEntries(legacyTables.map(name=>[name,sqlite.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()])));
-const preserved=snapshot();sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));check(snapshot()===preserved,'additive schema and repeated deployment preserve existing records');
+const preserved=snapshot();sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));
+sqlite.exec(fs.readFileSync('SECURITY-SCHEMA.sql','utf8'));sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));
+sqlite.exec(fs.readFileSync('SECURITY-SCHEMA.sql','utf8'));check(snapshot()===preserved,'additive schema and repeated deployment preserve existing records');
 const currentMember=(await state()).admin.members.find(m=>m.email===user.email);
 check(currentMember.snacks===1&&currentMember.gear===1,'existing members retain both shops by default');
 const memberChange=async(changes)=>{const m=(await state()).admin.members.find(m=>m.id===currentMember.id);return send(owner,{action:'member',id:m.id,name:m.name,email:m.email,role:m.role,debt:m.debt,credit:m.credit,tabLimit:m.tab_limit,previousDebt:m.debt,previousCredit:m.credit,active:!!m.active,...changes})};

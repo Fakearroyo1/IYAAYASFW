@@ -44,5 +44,11 @@
       "head_sampling_rate": 1,
       "persist": true
     }
-  }
+  },
+  "triggers": {
+    "crons": [
+      "17 * * * *"
+    ]
+  },
+  "keep_vars": true
 }
