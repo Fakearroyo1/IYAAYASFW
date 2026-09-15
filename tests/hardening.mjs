@@ -71,8 +71,9 @@ try{
  check((await req('/api/export?dataset=purchases',undefined,admin)).status===403,'expired MFA cannot export');
  const snapshot=JSON.stringify((await db.prepare('SELECT * FROM orders ORDER BY id').all()).results);await db.exec(readFileSync('SECURITY-SCHEMA.sql','utf8').replace(/^--.*$/gm,'').replace(/\n/g,' '));check(JSON.stringify((await db.prepare('SELECT * FROM orders ORDER BY id').all()).results)===snapshot,'reapplying security schema preserves live-shaped business records');
  const policy={decision:'allow',include:[{email:{email:'admin@example.test'}}],mfa_config:{mfa_disabled:false,session_duration:'30m',allowed_authenticators:['security_key','biometrics']}};
- const app={type:'self_hosted',domain:'iyaayasfw.com/api/admin/access',aud:audience,session_duration:'30m'},org={auth_domain:'security-test.cloudflareaccess.com'};
+ const app={type:'self_hosted',domain:'iyaayasfw.com/api/admin/access',aud:audience,session_duration:'30m'},org={auth_domain:'security-test.cloudflareaccess.com',mfa_config:{amr_matching_enabled:false,amr_session_duration:'1h'}};
  validateAccess(app,[policy],org,audience,issuer);checks++;
+ for(const mfa_config of [{amr_matching_enabled:true,amr_session_duration:'1h'},{amr_matching_enabled:true,amr_session_duration:'0m'},{amr_matching_enabled:'false'},{},undefined]){assert.throws(()=>validateAccess(app,[policy],{...org,mfa_config},audience,issuer),/Disable IdP AMR matching/);checks++}
  for(const bad of [{...policy,decision:'bypass'},{...policy,mfa_config:{...policy.mfa_config,mfa_disabled:true}},{...policy,mfa_config:{...policy.mfa_config,allowed_authenticators:['totp']}},{...policy,include:[{everyone:{}}]}]){assert.throws(()=>validateAccess(app,[bad],org,audience,issuer));checks++}
  let outbound=0;await assert.rejects(()=>preflight({}, {CF_PAGES:'1'},async()=>{outbound++}),/Cloudflare Pages/);check(outbound===0,'Pages deployment stops before any remote operation');
  await assert.rejects(()=>preflight({}, {WORKERS_CI_BRANCH:'feature'},async()=>{outbound++}),/main/);check(outbound===0,'non-main deploy stops before any remote operation');

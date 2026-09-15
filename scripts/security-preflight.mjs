@@ -17,7 +17,9 @@ export function validateAccess(app,policies,organization,audience,issuer){
   requireThat(mfa?.mfa_disabled===false&&shortSession(mfa.session_duration)&&mfa.allowed_authenticators?.length>0&&mfa.allowed_authenticators.every(v=>['security_key','biometrics'].includes(v)),'Every allow policy must require phishing-resistant independent MFA for at most 30 minutes.');
   requireThat(!policy.session_duration||shortSession(policy.session_duration),'An Access policy session exceeds 30 minutes.');
  }
- requireThat(!organization.mfa_config?.amr_matching_session_duration||organization.mfa_config.amr_matching_session_duration==='0m','Disable IdP AMR matching to require the configured independent MFA.');
+ // AMR matching can substitute an identity provider's MFA for our required
+ // security key or biometric challenge, regardless of its session duration.
+ requireThat(organization.mfa_config?.amr_matching_enabled===false,'Disable IdP AMR matching to require the configured independent MFA.');
 }
 export async function preflight(config,environment=process.env,fetcher=fetch){
  requireThat(!environment.CF_PAGES,'Production Worker deployment is disabled in Cloudflare Pages.');
