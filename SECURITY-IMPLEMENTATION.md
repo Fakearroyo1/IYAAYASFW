@@ -146,7 +146,14 @@ Workers authentication/concurrency checks passed. New tests cover MFA identity a
 session boundaries, one-time recovery races, invalid challenge tokens, pagination,
 complete totals/exports, parser deadlines, and encrypted-backup integrity. No live
 load test, production migration, password reset, or business-data mutation was run.
-The additional changes have not been published: automatic approval review requires explicit approval of this exact payload to the verified public repository `Fakearroyo1/IYAAYASFW`. The existing PR #2 still contains only the earlier audit patch. The new CI job and full Git-history secret scan therefore have not run remotely. Provider-side configuration remains unverified. No main branch or production changes were made.
+The owner explicitly approved public publication. The complete implementation is
+published in [PR #2](https://github.com/Fakearroyo1/IYAAYASFW/pull/2), starting with
+commit `c958f2e11e3b51c8abdd7f12a3e2d025794ff5b6`. GitHub's application checks and
+dependency audit passed. The first full-history secret scan reported one match;
+the scan now emits location-only diagnostics so it can be investigated without
+printing secret values. Check the latest PR results for its disposition.
+Provider-side configuration remains unverified. No main branch or production
+database changes were made. The PR remains a draft pending release prerequisites.
 
 References: [Access independent MFA](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/independent-mfa/),
 [Access JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/),
