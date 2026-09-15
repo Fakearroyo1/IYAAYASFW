@@ -149,9 +149,12 @@ load test, production migration, password reset, or business-data mutation was r
 The owner explicitly approved public publication. The complete implementation is
 published in [PR #2](https://github.com/Fakearroyo1/IYAAYASFW/pull/2), starting with
 commit `c958f2e11e3b51c8abdd7f12a3e2d025794ff5b6`. GitHub's application checks and
-dependency audit passed. The first full-history secret scan reported one match;
-the scan now emits location-only diagnostics so it can be investigated without
-printing secret values. Check the latest PR results for its disposition.
+dependency audit passed. The first full-history secret scan identified a synthetic
+password created only in the isolated Miniflare test database. The fixture now
+generates that password per run. A documented exception covers only that exact
+historical finding (commit, file, rule and line), without excluding test files or
+disabling a rule. The scan emits location-only diagnostics without secret values.
+Check the latest PR results for the complete-history rescan status.
 Provider-side configuration remains unverified. No main branch or production
 database changes were made. The PR remains a draft pending release prerequisites.
 

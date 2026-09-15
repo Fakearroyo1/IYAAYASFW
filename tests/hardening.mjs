@@ -18,7 +18,7 @@ try{
  const db=await mf.getD1Database('DB');
  for(const file of ['drizzle/0000_tiny_shape.sql','drizzle/0001_absent_guardsmen.sql','AUTH-SCHEMA.sql','PRODUCT-SCHEMA.sql','SECURITY-SCHEMA.sql'])await db.exec(readFileSync(file,'utf8').replace(/--> statement-breakpoint/g,'').replace(/^--.*$/gm,'').replace(/\n/g,' '));
  await db.prepare("INSERT INTO settings(id,enabled) VALUES('main',1)").run();
- const password='synthetic-hardening-fixture-2026',salt=randomBytes(16).toString('hex'),hash=`scrypt$16384$8$5$${salt}$${scryptSync(password,salt,32,{N:16384,r:8,p:5,maxmem:33554432}).toString('hex')}`;
+ const password='fixture-'+randomBytes(24).toString('hex'),salt=randomBytes(16).toString('hex'),hash=`scrypt$16384$8$5$${salt}$${scryptSync(password,salt,32,{N:16384,r:8,p:5,maxmem:33554432}).toString('hex')}`;
  const cookies={},tokens={};
  for(const [id,role] of [['admin','admin'],['member','member'],['other','member']]){
   await db.prepare('INSERT INTO members(id,user_id,email,name,role) VALUES(?,?,?,?,?)').bind(id,id,id+'@example.test',id,role).run();

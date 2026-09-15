@@ -1,0 +1,5 @@
+# Reviewed false positive: synthetic password created only for the isolated
+# Miniflare fixture in tests/hardening.mjs, never a production/API credential.
+# Current tests generate this value per run. This exception covers only the
+# exact historical finding; other commits, lines, files and rules remain scanned.
+c958f2e11e3b51c8abdd7f12a3e2d025794ff5b6:tests/hardening.mjs:generic-api-key:21
