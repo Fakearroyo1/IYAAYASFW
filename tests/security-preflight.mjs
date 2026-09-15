@@ -27,8 +27,9 @@ for(const bad of [{...policy,decision:'bypass'},{...policy,include:[{everyone:{}
  assert.throws(()=>validateAccess(app,[bad],organization,audience,issuer));checks++;
 }
 const config={name:'iyaayasfw-supply',workers_dev:false,preview_urls:false,routes:[{pattern:'iyaayasfw.com',custom_domain:true}]};
+const testSiteKey='0'.repeat(16);
 const bindings=[
- ...Object.entries({ADMIN_ACCESS_TEAM_DOMAIN:issuer,ADMIN_ACCESS_AUD:audience,ADMIN_ACCESS_APP_ID:'5582a373-919d-44d6-960f-fb2b43f46892',TURNSTILE_SITE_KEY:'test-site-key-1234'}).map(([name,text])=>({name,type:'plain_text',text})),
+ ...Object.entries({ADMIN_ACCESS_TEAM_DOMAIN:issuer,ADMIN_ACCESS_AUD:audience,ADMIN_ACCESS_APP_ID:'5582a373-919d-44d6-960f-fb2b43f46892',TURNSTILE_SITE_KEY:testSiteKey}).map(([name,text])=>({name,type:'plain_text',text})),
  {name:'TURNSTILE_SECRET_KEY',type:'secret_text'},{name:'OWNER_EMAIL',type:'secret_text'},
  {name:'DB',id:'ed7e63c8-77fd-4314-ab35-131c061e016a'},{name:'BUCKET',bucket_name:'iyaayasfw-supply-images'}
 ];
@@ -37,7 +38,7 @@ const replies=new Map([
  ['/access/apps/5582a373-919d-44d6-960f-fb2b43f46892',app],
  ['/access/apps/5582a373-919d-44d6-960f-fb2b43f46892/policies',[policy]],
  ['/access/organizations',organization],
- ['/challenges/widgets/test-site-key-1234',{mode:'managed',domains:['iyaayasfw.com']}],
+ ['/challenges/widgets/'+testSiteKey,{mode:'managed',domains:['iyaayasfw.com']}],
  ['/r2/buckets/iyaayasfw-supply-images/domains/managed',{enabled:false}],
  ['/r2/buckets/iyaayasfw-supply-images/domains/custom',{domains:[]}]
 ]);
