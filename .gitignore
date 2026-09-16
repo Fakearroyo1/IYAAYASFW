@@ -52,3 +52,6 @@ next-env.d.ts
 /public/products/*.png
 /public/products/*.jpg
 /public/products/*.avif
+
+/public/brand/logo.png
+/public/favicon.svg
