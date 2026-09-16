@@ -1,116 +1,954 @@
-import {DatabaseSync} from 'node:sqlite';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import ts from 'typescript';
-const out=path.resolve('.sites-runtime/pilot-tests');fs.mkdirSync(out,{recursive:true});
-for(const name of ['catalog','owner','core','access','products','orders','service','pricing','history']){const source=fs.readFileSync(`lib/pilot/${name}.ts`,'utf8');const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from '(\.\/[^']+)'/g,"from '$1.mjs'");fs.writeFileSync(`${out}/${name}.mjs`,code)}
-fs.writeFileSync(`${out}/owner.mjs`,"export const OWNER_EMAIL='owner@example.test';");
-const {mutate,readState}=await import(`${out}/service.mjs`);const {OWNER_EMAIL}=await import(`${out}/owner.mjs`);
-const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');for(const file of fs.readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())sqlite.exec(fs.readFileSync('drizzle/'+file,'utf8'));
-sqlite.exec(fs.readFileSync('AUTH-SCHEMA.sql','utf8'));
-sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));
-sqlite.exec(fs.readFileSync('SECURITY-SCHEMA.sql','utf8'));
-class Statement{constructor(sql,v=[]){this.sql=sql;this.v=v}bind(...v){return new Statement(this.sql,v)}async first(){return sqlite.prepare(this.sql).get(...this.v)||null}async all(){return{results:sqlite.prepare(this.sql).all(...this.v)}}async run(){return sqlite.prepare(this.sql).run(...this.v)}}
-const db={prepare:sql=>new Statement(sql),batch:async statements=>{sqlite.exec('BEGIN');try{const results=[];for(const s of statements)results.push(await s.run());sqlite.exec('COMMIT');return results}catch(e){sqlite.exec('ROLLBACK');throw e}}};
-const owner={userId:'owner-user',email:OWNER_EMAIL},user={userId:'test-member',email:'pilot@example.test'};let checks=0;
-const check=(v,m)=>{assert.ok(v,m);checks++};
-const send=(u,b)=>mutate(db,u,{requestId:crypto.randomUUID(),...b});
-const state=async()=>{const s=await readState(db,owner,{view:'admin',section:'activity',includeAdmin:true});const {historyPage,itemsForOrders}=await import(`${out}/history.mjs`);s.admin.members=(await historyPage(db,s.member,'members',{admin:true})).records;s.admin.payments=(await historyPage(db,s.member,'payments',{admin:true})).records;s.admin.items=await itemsForOrders(db,s.admin.orders,true);s.admin.restocks=(await db.prepare('SELECT * FROM restock_entries').all()).results;return s};
-const product=async(id='monster')=>(await state()).products.find(p=>p.id===id);
-const order=(method,qty=1,id=crypto.randomUUID(),productId='monster',price=250)=>({action:'order',id,method,items:[{id:productId,qty,price}]});
-const configure=async(id,stock=20,category='Drinks',preorder=false)=>{const p=await product(id);await send(owner,{action:'product',id,name:p.name,category,detail:p.detail,price:250,cost:100,taxBp:0,stock,previousStock:p.stock,version:p.version,reorder:3,active:true,preorder,reason:'Verified test count'})};
-check((await state()).member.role==='admin','Owner becomes administrator');
-await assert.rejects(()=>send(owner,order('cash')),/paused/);checks++;
-await assert.rejects(()=>send(null,{action:'settings'}),/Member access/);checks++;
-await configure('monster');await configure('coin',10,'Gear');
-await send(owner,{action:'settings',cashtag:'PilotExample',cashInstructions:'Cash box',enabled:true,reminderDays:7});
-const cash=order('cash');await send(owner,cash);check((await product()).stock===19,'Member cash records stock');await send(owner,cash);check((await product()).stock===19,'Duplicate consumption is idempotent');
-check((await state()).admin.payments[0].status==='pending','Member cash is unverified');
-await assert.rejects(()=>send(owner,{...cash,items:[{id:'monster',qty:2,price:250}]}),/already been used/);checks++;
-await assert.rejects(()=>send(null,order('cash',1,crypto.randomUUID(),'coin')),/Member access/);checks++;
-await send(owner,{action:'member',name:'Pilot Member',email:user.email,debt:0,credit:0,tabLimit:2000,active:true,reason:'Opening test balance'});
-check((await readState(db,user)).member.user_id===user.userId,'Invitation binds to authenticated stable identity');
-await send(user,order('tab',4));check((await readState(db,user)).member.debt===1000,'Tab records debt');const beforeLimit=(await product()).stock;
-await assert.rejects(()=>send(user,order('tab',5)),/record changed/);checks++;check((await product()).stock===beforeLimit,'Over-limit batch rolls stock back');
-const settlement={action:'payment',id:crypto.randomUUID(),method:'cashapp',purpose:'settlement',amount:400};await send(user,settlement);check((await readState(db,user)).member.debt===1000,'Reported settlement leaves debt unchanged');
-const salesBefore=(await state()).admin.orders.reduce((s,o)=>s+o.total,0);
-const verify={action:'verify',id:settlement.id,confirmed:true,reference:'transfer-001'};await send(owner,verify);await send(owner,verify);
-check((await readState(db,user)).member.debt===600,'Confirmed settlement applied exactly once');check((await state()).admin.orders.reduce((s,o)=>s+o.total,0)===salesBefore,'Settlement does not create revenue');
-const topup={action:'payment',id:crypto.randomUUID(),method:'cashapp',purpose:'topup',amount:500};await send(user,topup);check((await readState(db,user)).member.credit===0,'Unconfirmed credit cannot be spent');
-await assert.rejects(()=>send(owner,{action:'verify',id:topup.id,confirmed:true,reference:'transfer-001'}),/already recorded/);checks++;check((await readState(db,user)).member.credit===0,'Duplicate payment reference rolls credit back');
-await send(owner,{action:'verify',id:topup.id,confirmed:true,reference:'transfer-002'});await send(user,order('credit'));check((await readState(db,user)).member.credit===250,'Credit purchase deducts balance');
-const stale=await product();await send(owner,order('cash'));
-await assert.rejects(()=>send(owner,{action:'product',id:'monster',name:stale.name,category:stale.category,detail:'',price:250,cost:100,taxBp:0,stock:stale.stock,previousStock:stale.stock,version:stale.version,reorder:3,active:true,preorder:false,reason:'Stale count'}),/record changed/);checks++;
-const receive={action:'receive',requestId:crypto.randomUUID(),id:'monster',qty:24,amount:2400,reference:'Costco test receipt'};const beforeReceive=(await product()).stock;await send(owner,receive);await send(owner,receive);check((await product()).stock===beforeReceive+24,'Restock retries do not duplicate stock');
-const pending2={action:'payment',id:crypto.randomUUID(),method:'cash',purpose:'settlement',amount:600};await send(user,pending2);await assert.rejects(()=>send(user,{...pending2,id:crypto.randomUUID(),amount:1}),/record changed/);checks++;
-const beforeVoid=(await product()).stock;await send(owner,{action:'reject',id:cash.id,reason:'Items returned',returned:true});check((await product()).stock===beforeVoid+1,'Void restores stock once');await assert.rejects(()=>send(owner,{action:'reject',id:cash.id,reason:'Items returned',returned:true}),/pending payment/);checks++;
-await configure('monster',1);const firstOrder=order('cash'),secondOrder=order('cash');await send(owner,firstOrder);await assert.rejects(()=>send(owner,secondOrder),/insufficient stock/);checks++;check((await product()).stock===0,'Stock cannot go negative');
-await assert.rejects(()=>send(user,order('tab',1,crypto.randomUUID(),'coin')),/paid upfront/);checks++;
-await assert.rejects(()=>readState(db,null),/Member access/);checks++;
-const memberData=await readState(db,user);check(!memberData.admin&&memberData.products.every(p=>p.cost===undefined),'Member cannot read management records or costs');
-check((await state()).admin.events.length>10,'Audit trail persists');
+import { DatabaseSync } from "node:sqlite";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import ts from "typescript";
+const out = path.resolve(".sites-runtime/pilot-tests");
+fs.mkdirSync(out, { recursive: true });
+for (const name of [
+  "catalog",
+  "owner",
+  "core",
+  "access",
+  "products",
+  "orders",
+  "service",
+  "pricing",
+  "history",
+  "balances",
+  "transactions",
+  "community",
+]) {
+  const source = fs.readFileSync(`lib/pilot/${name}.ts`, "utf8");
+  const code = ts
+    .transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    })
+    .outputText.replace(/from (['"])(\.\/[^'"]+)\1/g, 'from "$2.mjs"');
+  fs.writeFileSync(`${out}/${name}.mjs`, code);
+}
+fs.writeFileSync(
+  `${out}/owner.mjs`,
+  "export const OWNER_EMAIL='owner@example.test';",
+);
+const { mutate, readState } = await import(`${out}/service.mjs`);
+const { OWNER_EMAIL } = await import(`${out}/owner.mjs`);
+const sqlite = new DatabaseSync(":memory:");
+sqlite.exec("PRAGMA foreign_keys=ON");
+for (const file of fs
+  .readdirSync("drizzle")
+  .filter((f) => f.endsWith(".sql"))
+  .sort())
+  sqlite.exec(fs.readFileSync("drizzle/" + file, "utf8"));
+sqlite.exec(fs.readFileSync("AUTH-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("PRODUCT-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("SECURITY-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("BETA-SCHEMA.sql", "utf8"));
+class Statement {
+  constructor(sql, v = []) {
+    this.sql = sql;
+    this.v = v;
+  }
+  bind(...v) {
+    return new Statement(this.sql, v);
+  }
+  async first() {
+    return sqlite.prepare(this.sql).get(...this.v) || null;
+  }
+  async all() {
+    return { results: sqlite.prepare(this.sql).all(...this.v) };
+  }
+  async run() {
+    return sqlite.prepare(this.sql).run(...this.v);
+  }
+}
+const db = {
+  prepare: (sql) => new Statement(sql),
+  batch: async (statements) => {
+    sqlite.exec("BEGIN");
+    try {
+      const results = [];
+      for (const s of statements) results.push(await s.run());
+      sqlite.exec("COMMIT");
+      return results;
+    } catch (e) {
+      sqlite.exec("ROLLBACK");
+      throw e;
+    }
+  },
+};
+const owner = { userId: "owner-user", email: OWNER_EMAIL },
+  user = { userId: "test-member", email: "pilot@example.test" };
+let checks = 0;
+const check = (v, m) => {
+  assert.ok(v, m);
+  checks++;
+};
+const send = (u, b) => mutate(db, u, { requestId: crypto.randomUUID(), ...b });
+const state = async () => {
+  const s = await readState(db, owner, {
+    view: "admin",
+    section: "activity",
+    includeAdmin: true,
+  });
+  const { historyPage, itemsForOrders } = await import(`${out}/history.mjs`);
+  s.admin.members = (
+    await historyPage(db, s.member, "members", { admin: true })
+  ).records;
+  s.admin.payments = (
+    await historyPage(db, s.member, "payments", { admin: true })
+  ).records;
+  s.admin.items = await itemsForOrders(db, s.admin.orders, true);
+  s.admin.restocks = (
+    await db.prepare("SELECT * FROM restock_entries").all()
+  ).results;
+  return s;
+};
+const product = async (id = "monster") =>
+  (await state()).products.find((p) => p.id === id);
+const order = (
+  method,
+  qty = 1,
+  id = crypto.randomUUID(),
+  productId = "monster",
+  price = 250,
+) => ({ action: "order", id, method, items: [{ id: productId, qty, price }] });
+const configure = async (
+  id,
+  stock = 20,
+  category = "Drinks",
+  preorder = false,
+) => {
+  const p = await product(id);
+  await send(owner, {
+    action: "product",
+    id,
+    name: p.name,
+    category,
+    detail: p.detail,
+    price: 250,
+    cost: 100,
+    taxBp: 0,
+    stock,
+    previousStock: p.stock,
+    version: p.version,
+    reorder: 3,
+    active: true,
+    preorder,
+    reason: "Verified test count",
+  });
+};
+check((await state()).member.role === "admin", "Owner becomes administrator");
+await assert.rejects(() => send(owner, order("cash")), /paused/);
+checks++;
+await assert.rejects(() => send(null, { action: "settings" }), /Member access/);
+checks++;
+await configure("monster");
+await configure("coin", 10, "Gear");
+await send(owner, {
+  action: "settings",
+  cashtag: "PilotExample",
+  cashInstructions: "Cash box",
+  enabled: true,
+  reminderDays: 7,
+});
+const cash = order("cash", 1, crypto.randomUUID(), "coin");
+await send(owner, cash);
+check((await product("coin")).stock === 9, "Gear cash records stock");
+await send(owner, cash);
+check(
+  (await product("coin")).stock === 9,
+  "Duplicate consumption is idempotent",
+);
+check(
+  (await state()).admin.payments[0].status === "pending",
+  "Member cash is unverified",
+);
+await assert.rejects(
+  () =>
+    send(owner, { ...cash, items: [{ id: "monster", qty: 2, price: 250 }] }),
+  /already been used/,
+);
+checks++;
+await assert.rejects(
+  () => send(null, order("cash", 1, crypto.randomUUID(), "coin")),
+  /Member access/,
+);
+checks++;
+await send(owner, {
+  action: "member",
+  name: "Pilot Member",
+  email: user.email,
+  debt: 0,
+  credit: 0,
+  tabLimit: 2000,
+  active: true,
+  reason: "Opening test balance",
+});
+check(
+  (await readState(db, user)).member.user_id === user.userId,
+  "Invitation binds to authenticated stable identity",
+);
+await send(user, order("tab", 4));
+check((await readState(db, user)).member.debt === 1000, "Tab records debt");
+const beforeLimit = (await product()).stock;
+await assert.rejects(() => send(user, order("tab", 5)), /record changed/);
+checks++;
+check(
+  (await product()).stock === beforeLimit,
+  "Over-limit batch rolls stock back",
+);
+const settlement = {
+  action: "payment",
+  id: crypto.randomUUID(),
+  method: "cashapp",
+  purpose: "settlement",
+  amount: 400,
+};
+await send(user, settlement);
+check(
+  (await readState(db, user)).member.debt === 1000,
+  "Reported settlement leaves debt unchanged",
+);
+const salesBefore = (await state()).admin.orders.reduce(
+  (s, o) => s + o.total,
+  0,
+);
+const verify = {
+  action: "verify",
+  id: settlement.id,
+  confirmed: true,
+  reference: "transfer-001",
+};
+await send(owner, verify);
+await send(owner, verify);
+check(
+  (await readState(db, user)).member.debt === 600,
+  "Confirmed settlement applied exactly once",
+);
+check(
+  (await state()).admin.orders.reduce((s, o) => s + o.total, 0) === salesBefore,
+  "Settlement does not create revenue",
+);
+const topup = {
+  action: "payment",
+  id: crypto.randomUUID(),
+  method: "cashapp",
+  purpose: "topup",
+  amount: 500,
+};
+await send(user, topup);
+check(
+  (await readState(db, user)).member.credit === 0,
+  "Unconfirmed credit cannot be spent",
+);
+await assert.rejects(
+  () =>
+    send(owner, {
+      action: "verify",
+      id: topup.id,
+      confirmed: true,
+      reference: "transfer-001",
+    }),
+  /already recorded/,
+);
+checks++;
+check(
+  (await readState(db, user)).member.credit === 0,
+  "Duplicate payment reference rolls credit back",
+);
+await send(owner, {
+  action: "verify",
+  id: topup.id,
+  confirmed: true,
+  reference: "transfer-002",
+});
+await send(user, order("credit"));
+check(
+  (await readState(db, user)).member.credit === 250,
+  "Credit purchase deducts balance",
+);
+const stale = await product();
+await send(owner, order("tab"));
+await assert.rejects(
+  () =>
+    send(owner, {
+      action: "product",
+      id: "monster",
+      name: stale.name,
+      category: stale.category,
+      detail: "",
+      price: 250,
+      cost: 100,
+      taxBp: 0,
+      stock: stale.stock,
+      previousStock: stale.stock,
+      version: stale.version,
+      reorder: 3,
+      active: true,
+      preorder: false,
+      reason: "Stale count",
+    }),
+  /record changed/,
+);
+checks++;
+const receive = {
+  action: "receive",
+  requestId: crypto.randomUUID(),
+  id: "monster",
+  qty: 24,
+  amount: 2400,
+  reference: "Costco test receipt",
+};
+const beforeReceive = (await product()).stock;
+await send(owner, receive);
+await send(owner, receive);
+check(
+  (await product()).stock === beforeReceive + 24,
+  "Restock retries do not duplicate stock",
+);
+const pending2 = {
+  action: "payment",
+  id: crypto.randomUUID(),
+  method: "cash",
+  purpose: "settlement",
+  amount: 600,
+};
+await send(user, pending2);
+await assert.rejects(
+  () => send(user, { ...pending2, id: crypto.randomUUID(), amount: 1 }),
+  /record changed/,
+);
+checks++;
+const beforeVoid = (await product("coin")).stock;
+await send(owner, {
+  action: "reject",
+  id: cash.id,
+  reason: "Items returned",
+  returned: true,
+});
+check(
+  (await product("coin")).stock === beforeVoid + 1,
+  "Void restores stock once",
+);
+await assert.rejects(
+  () =>
+    send(owner, {
+      action: "reject",
+      id: cash.id,
+      reason: "Items returned",
+      returned: true,
+    }),
+  /pending payment/,
+);
+checks++;
+await configure("monster", 1);
+const firstOrder = order("tab"),
+  secondOrder = order("tab");
+await send(owner, firstOrder);
+await assert.rejects(() => send(owner, secondOrder), /insufficient stock/);
+checks++;
+check((await product()).stock === 0, "Stock cannot go negative");
+await assert.rejects(
+  () => send(user, order("tab", 1, crypto.randomUUID(), "coin")),
+  /paid upfront/,
+);
+checks++;
+await assert.rejects(() => readState(db, null), /Member access/);
+checks++;
+const memberData = await readState(db, user);
+check(
+  !memberData.admin && memberData.products.every((p) => p.cost === undefined),
+  "Member cannot read management records or costs",
+);
+check((await state()).admin.events.length > 10, "Audit trail persists");
 // Additive migrations leave every existing record unchanged, even when reapplied.
-const legacyTables=['products','members','settings','orders','order_items','payments','expenses','audit','auth_credentials','auth_sessions'];
-const snapshot=()=>JSON.stringify(Object.fromEntries(legacyTables.map(name=>[name,sqlite.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()])));
-const preserved=snapshot();sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));
-sqlite.exec(fs.readFileSync('SECURITY-SCHEMA.sql','utf8'));sqlite.exec(fs.readFileSync('PRODUCT-SCHEMA.sql','utf8'));
-sqlite.exec(fs.readFileSync('SECURITY-SCHEMA.sql','utf8'));check(snapshot()===preserved,'additive schema and repeated deployment preserve existing records');
-const currentMember=(await state()).admin.members.find(m=>m.email===user.email);
-check(currentMember.snacks===1&&currentMember.gear===1,'existing members retain both shops by default');
-const memberChange=async(changes)=>{const m=(await state()).admin.members.find(m=>m.id===currentMember.id);return send(owner,{action:'member',id:m.id,name:m.name,email:m.email,role:m.role,debt:m.debt,credit:m.credit,tabLimit:m.tab_limit,previousDebt:m.debt,previousCredit:m.credit,active:!!m.active,...changes})};
-await memberChange({snacks:false,gear:true});check((await readState(db,user)).products.every(p=>p.category==='Gear'),'gear-only API completely removes snack catalog');
-await assert.rejects(()=>send(user,order('cash')),/cannot purchase/);checks++;
-await send(owner,{action:'member',email:'both-admin@example.test',name:'Admin',role:'admin',debt:0,credit:0,tabLimit:0,active:true,snacks:false,gear:false});const bothAdmin={userId:'both-admin',email:'both-admin@example.test'};
-check((await readState(db,bothAdmin)).products.some(p=>p.category==='Drinks'),'admins retain all categories regardless of purchasing flags');
-await send(owner,{action:'product',id:'test-shirt',name:'Unit shirt',category:'Gear',detail:'Cotton',price:2000,cost:900,taxBp:0,stock:6,reorder:2,active:true,preorder:false,reason:'Opening fixture'});
-let shirt=await product('test-shirt');
-await send(owner,{action:'details',id:shirt.id,version:shirt.version,description:'Shirt details',images:['/products/test-front.png','/products/test-back.png'],personalizationLabel:'Last name',personalizationRequired:true,personalizationMax:20,pickupNote:'Unit office'});
-shirt=await product('test-shirt');await send(owner,{action:'variants',id:shirt.id,version:shirt.version,variants:[{label:'Medium / Black',size:'M',color:'Black',active:true,preorder:false},{label:'Large / Navy',size:'L',color:'Navy',active:true,preorder:true}]});
-shirt=await product('test-shirt');let medium=shirt.variants[0],large=shirt.variants[1];
-check(shirt.stock===6&&medium.stock===0,'creating options does not duplicate existing stock');
-await send(owner,{action:'allocate',id:shirt.id,version:shirt.version,variantId:medium.id,qty:4,reason:'Counted four medium shirts'});shirt=await product('test-shirt');medium=shirt.variants[0];check(shirt.stock===2&&medium.stock===4&&medium.cost===900,'allocation preserves total stock and assigns its cost');
-const gearOrder=(items,id=crypto.randomUUID())=>({action:'order',id,method:'cash',items});
-await assert.rejects(()=>send(user,gearOrder([{id:shirt.id,price:2000,qty:1}])),/Select an available/);checks++;
-await assert.rejects(()=>send(user,gearOrder([{id:shirt.id,price:2000,qty:1,variantId:medium.id}])),/Enter Last name/);checks++;
-await assert.rejects(()=>send(user,gearOrder([{id:shirt.id,price:2000,qty:1,variantId:medium.id,personalization:'LongNameBeyondTwentyChars'}])),/Review the personalization/);checks++;
-const line=(name,qty=1)=>({id:shirt.id,price:2000,qty,variantId:medium.id,personalization:name});
-await assert.rejects(()=>send(user,gearOrder([line('Smith',3),line('Jones',2)])),/insufficient stock/);checks++;
-check((await product(shirt.id)).variants[0].stock===4,'combined personalization quantities cannot oversell an option');
-const checkout=gearOrder([line('Smith'),line('Jones')]);const ordered=await send(user,checkout);await send(user,checkout);check((await product(shirt.id)).variants[0].stock===2,'gear checkout retry consumes stock exactly once');
-const orderItems=(await state()).admin.items.filter(i=>i.order_id===ordered.order.id);check(orderItems.length===2&&orderItems.every(i=>i.variant_label==='Medium / Black'&&i.fulfillment==='ready'),'orders capture variant, personalization, and pickup status');
-check((await readState(db,user)).items.some(i=>i.personalization==='Smith'),'member can view own personalized order');
-await assert.rejects(()=>send(user,{action:'fulfillment',itemId:orderItems[0].id,previousStatus:'ready',status:'fulfilled'}),/Administrator/);checks++;
-await assert.rejects(()=>send(owner,{action:'fulfillment',itemId:orderItems[0].id,previousStatus:'ready',status:'fulfilled'}),/Confirm payment/);checks++;
-await send(owner,{action:'verify',id:ordered.order.id,confirmed:true,reference:'gear-paid-001'});await send(owner,{action:'fulfillment',itemId:orderItems[0].id,previousStatus:'ready',status:'fulfilled'});check((await state()).admin.items.find(i=>i.id===orderItems[0].id).fulfillment==='fulfilled','paid gear can be marked picked up');
-shirt=await product(shirt.id);medium=shirt.variants[0];await send(owner,{action:'price',id:shirt.id,version:shirt.version,variantId:medium.id,variantVersion:medium.version,price:2300});
-const originalItem=sqlite.prepare('SELECT price,cost FROM order_items WHERE id=?').get(orderItems[0].id);check(originalItem.price===2000&&originalItem.cost===900,'new option pricing never rewrites prior sale snapshots');
-await assert.rejects(()=>send(user,gearOrder([line('PriceChanged')])) ,/price changed/);checks++;
-const afterPrice=await product(shirt.id),options=afterPrice.variants.map(v=>({...v,label:v.id===medium.id?'Medium / Jet Black':v.label,active:!!v.active,preorder:!!v.preorder}));await send(owner,{action:'variants',id:shirt.id,version:afterPrice.version,variants:options});check((await state()).admin.items.find(i=>i.id===orderItems[0].id).variant_label==='Medium / Black','renaming option preserves original ordered name');
-const voidOrder=await send(user,gearOrder([{...line('Returned'),price:2300}]));const beforeVariantVoid=(await product(shirt.id)).variants[0].stock;await send(owner,{action:'reject',id:voidOrder.order.id,reason:'Returned unopened',returned:true});check((await product(shirt.id)).variants[0].stock===beforeVariantVoid+1,'void restores option stock instead of unassigned stock');
-const pre=await send(user,gearOrder([{id:shirt.id,price:2000,qty:2,variantId:large.id,personalization:'Arroyo'}]));check((await state()).admin.items.find(i=>i.order_id===pre.order.id).fulfillment==='awaiting_stock','preorders start awaiting stock and preserve requested quantity');
-shirt=await product(shirt.id);const beforeArchive=snapshot();await send(owner,{action:'archive',id:shirt.id,version:shirt.version,archived:true});check(!(await readState(db,user)).products.some(p=>p.id===shirt.id),'archived products hidden from members');await assert.rejects(()=>send(user,gearOrder([{id:shirt.id,price:2000,qty:1,variantId:large.id,personalization:'Hidden'}])),/not ready/);checks++;
-check((await readState(db,user)).orders.some(o=>o.id===pre.order.id),'archiving preserves member order history');shirt=await product(shirt.id);await send(owner,{action:'archive',id:shirt.id,version:shirt.version,archived:false});
-await send(owner,{action:'receive',id:shirt.id,variantId:medium.id,qty:3,amount:3300,reference:'Shirt supplier batch'});check((await state()).admin.restocks.some(r=>r.variant_id===medium.id&&r.qty===3),'option restocks capture cost and quantity separately');
-const snack=await product();await send(owner,{action:'price',id:snack.id,version:snack.version,price:263});check((await product()).price===275,'snack pricing always rounds upward to nearest quarter');
-const {suggestedPrice,priceMargin,itemPerformance}=await import(`${out}/pricing.mjs`);
-check(suggestedPrice(100,30,0,true)===150&&suggestedPrice(100,0,0,true)===100,'calculator quarter rounding handles exact multiples');
-check(Math.abs(priceMargin(107,100,7).profit)<0.00001,'margin removes included sales tax before comparing cost');
-const oldSnapshots=JSON.stringify(sqlite.prepare('SELECT * FROM order_items ORDER BY rowid').all());let changing=await product();await send(owner,{action:'price',id:changing.id,version:changing.version,price:300,cost:200,taxBp:0});check(JSON.stringify(sqlite.prepare('SELECT * FROM order_items ORDER BY rowid').all())===oldSnapshots,'base price and cost updates preserve all historical items');
-const report=itemPerformance((await state()).admin,shirt.id);check(report.units===4&&report.sales===8000&&report.knownCost===3600&&report.profit===4400,'item performance excludes voids and uses immutable per-line cost');
-const unknownReport=itemPerformance({orders:[{id:'u',status:'paid',created_at:1}],items:[{order_id:'u',product_id:'p',qty:2,price:100,cost:null,tax_bp:0}]},'p');check(unknownReport.profit===null&&unknownReport.unknownUnits===2,'unknown historical cost remains explicitly unknown');
-await memberChange({snacks:true,gear:false});check((await readState(db,user)).products.every(p=>p.category!=='Gear'),'snack-only accounts cannot see gear');
-await assert.rejects(()=>send(user,gearOrder([{id:shirt.id,price:2000,qty:1,variantId:large.id,personalization:'Denied'}])),/cannot purchase/);checks++;
-shirt=await product('test-shirt');await send(owner,{action:'variants',id:shirt.id,version:shirt.version,variants:shirt.variants.map(v=>({...v,active:false,preorder:!!v.preorder}))});
-const publicShirt=(await readState(db,bothAdmin)).products.find(p=>p.id===shirt.id);check(publicShirt.option_required,'option requirement persists independently of option visibility');
-await memberChange({snacks:false,gear:true});const hiddenShirt=(await readState(db,user)).products.find(p=>p.id===shirt.id);check(hiddenShirt.option_required&&hiddenShirt.variants.length===0,'hiding all options cannot expose the unassigned base stock as a sale option');
-shirt=await product('test-shirt');const manyOptions=[...shirt.variants.map(v=>({...v,active:false,preorder:!!v.preorder})),...Array.from({length:78},(_,i)=>({label:'Future option '+i,size:String(i),color:'Test',active:false,preorder:true}))];await send(owner,{action:'variants',id:shirt.id,version:shirt.version,variants:manyOptions});check((await product(shirt.id)).variants.length===80,'large preset list is saved in one bounded SQL batch');
+const legacyTables = [
+  "products",
+  "members",
+  "settings",
+  "orders",
+  "order_items",
+  "payments",
+  "expenses",
+  "audit",
+  "auth_credentials",
+  "auth_sessions",
+];
+const snapshot = () =>
+  JSON.stringify(
+    Object.fromEntries(
+      legacyTables.map((name) => [
+        name,
+        sqlite.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all(),
+      ]),
+    ),
+  );
+const preserved = snapshot();
+sqlite.exec(fs.readFileSync("PRODUCT-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("SECURITY-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("PRODUCT-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("SECURITY-SCHEMA.sql", "utf8"));
+check(
+  snapshot() === preserved,
+  "additive schema and repeated deployment preserve existing records",
+);
+const currentMember = (await state()).admin.members.find(
+  (m) => m.email === user.email,
+);
+check(
+  currentMember.snacks === 1 && currentMember.gear === 1,
+  "existing members retain both shops by default",
+);
+const memberChange = async (changes) => {
+  const m = (await state()).admin.members.find(
+    (m) => m.id === currentMember.id,
+  );
+  return send(owner, {
+    action: "member",
+    id: m.id,
+    name: m.name,
+    email: m.email,
+    role: m.role,
+    debt: m.debt,
+    credit: m.credit,
+    tabLimit: m.tab_limit,
+    previousDebt: m.debt,
+    previousCredit: m.credit,
+    active: !!m.active,
+    ...changes,
+  });
+};
+await memberChange({ snacks: false, gear: true });
+check(
+  (await readState(db, user)).products.every((p) => p.category === "Gear"),
+  "gear-only API completely removes snack catalog",
+);
+await assert.rejects(() => send(user, order("cash")), /cannot purchase/);
+checks++;
+await send(owner, {
+  action: "member",
+  email: "both-admin@example.test",
+  name: "Admin",
+  role: "admin",
+  debt: 0,
+  credit: 0,
+  tabLimit: 0,
+  active: true,
+  snacks: false,
+  gear: false,
+});
+const bothAdmin = { userId: "both-admin", email: "both-admin@example.test" };
+check(
+  (await readState(db, bothAdmin)).products.some(
+    (p) => p.category === "Drinks",
+  ),
+  "admins retain all categories regardless of purchasing flags",
+);
+await send(owner, {
+  action: "product",
+  id: "test-shirt",
+  name: "Unit shirt",
+  category: "Gear",
+  detail: "Cotton",
+  price: 2000,
+  cost: 900,
+  taxBp: 0,
+  stock: 6,
+  reorder: 2,
+  active: true,
+  preorder: false,
+  reason: "Opening fixture",
+});
+let shirt = await product("test-shirt");
+await send(owner, {
+  action: "details",
+  id: shirt.id,
+  version: shirt.version,
+  description: "Shirt details",
+  images: ["/products/test-front.png", "/products/test-back.png"],
+  personalizationLabel: "Last name",
+  personalizationRequired: true,
+  personalizationMax: 20,
+  pickupNote: "Unit office",
+});
+shirt = await product("test-shirt");
+await send(owner, {
+  action: "variants",
+  id: shirt.id,
+  version: shirt.version,
+  variants: [
+    {
+      label: "Medium / Black",
+      size: "M",
+      color: "Black",
+      active: true,
+      preorder: false,
+    },
+    {
+      label: "Large / Navy",
+      size: "L",
+      color: "Navy",
+      active: true,
+      preorder: true,
+    },
+  ],
+});
+shirt = await product("test-shirt");
+let medium = shirt.variants[0],
+  large = shirt.variants[1];
+check(
+  shirt.stock === 6 && medium.stock === 0,
+  "creating options does not duplicate existing stock",
+);
+await send(owner, {
+  action: "allocate",
+  id: shirt.id,
+  version: shirt.version,
+  variantId: medium.id,
+  qty: 4,
+  reason: "Counted four medium shirts",
+});
+shirt = await product("test-shirt");
+medium = shirt.variants[0];
+check(
+  shirt.stock === 2 && medium.stock === 4 && medium.cost === 900,
+  "allocation preserves total stock and assigns its cost",
+);
+const gearOrder = (items, id = crypto.randomUUID()) => ({
+  action: "order",
+  id,
+  method: "cash",
+  items,
+});
+await assert.rejects(
+  () => send(user, gearOrder([{ id: shirt.id, price: 2000, qty: 1 }])),
+  /Select a size or color/,
+);
+checks++;
+await assert.rejects(
+  () =>
+    send(
+      user,
+      gearOrder([{ id: shirt.id, price: 2000, qty: 1, variantId: medium.id }]),
+    ),
+  /Enter Last name/,
+);
+checks++;
+await assert.rejects(
+  () =>
+    send(
+      user,
+      gearOrder([
+        {
+          id: shirt.id,
+          price: 2000,
+          qty: 1,
+          variantId: medium.id,
+          personalization: "LongNameBeyondTwentyChars",
+        },
+      ]),
+    ),
+  /Review the personalization/,
+);
+checks++;
+const line = (name, qty = 1) => ({
+  id: shirt.id,
+  price: 2000,
+  qty,
+  variantId: medium.id,
+  personalization: name,
+});
+await assert.rejects(
+  () => send(user, gearOrder([line("Smith", 3), line("Jones", 2)])),
+  /insufficient stock/,
+);
+checks++;
+check(
+  (await product(shirt.id)).variants[0].stock === 4,
+  "combined personalization quantities cannot oversell an option",
+);
+const checkout = gearOrder([line("Smith"), line("Jones")]);
+const ordered = await send(user, checkout);
+await send(user, checkout);
+check(
+  (await product(shirt.id)).variants[0].stock === 2,
+  "gear checkout retry consumes stock exactly once",
+);
+const orderItems = (await state()).admin.items.filter(
+  (i) => i.order_id === ordered.order.id,
+);
+check(
+  orderItems.length === 2 &&
+    orderItems.every(
+      (i) => i.variant_label === "Medium / Black" && i.fulfillment === "ready",
+    ),
+  "orders capture variant, personalization, and pickup status",
+);
+check(
+  (await readState(db, user)).items.some((i) => i.personalization === "Smith"),
+  "member can view own personalized order",
+);
+await assert.rejects(
+  () =>
+    send(user, {
+      action: "fulfillment",
+      itemId: orderItems[0].id,
+      previousStatus: "ready",
+      status: "fulfilled",
+    }),
+  /Administrator/,
+);
+checks++;
+await assert.rejects(
+  () =>
+    send(owner, {
+      action: "fulfillment",
+      itemId: orderItems[0].id,
+      previousStatus: "ready",
+      status: "fulfilled",
+    }),
+  /Confirm payment/,
+);
+checks++;
+await send(owner, {
+  action: "verify",
+  id: ordered.order.id,
+  confirmed: true,
+  reference: "gear-paid-001",
+});
+await send(owner, {
+  action: "fulfillment",
+  itemId: orderItems[0].id,
+  previousStatus: "ready",
+  status: "fulfilled",
+});
+check(
+  (await state()).admin.items.find((i) => i.id === orderItems[0].id)
+    .fulfillment === "fulfilled",
+  "paid gear can be marked picked up",
+);
+shirt = await product(shirt.id);
+medium = shirt.variants[0];
+await send(owner, {
+  action: "price",
+  id: shirt.id,
+  version: shirt.version,
+  variantId: medium.id,
+  variantVersion: medium.version,
+  price: 2300,
+});
+const originalItem = sqlite
+  .prepare("SELECT price,cost FROM order_items WHERE id=?")
+  .get(orderItems[0].id);
+check(
+  originalItem.price === 2000 && originalItem.cost === 900,
+  "new option pricing never rewrites prior sale snapshots",
+);
+await assert.rejects(
+  () => send(user, gearOrder([line("PriceChanged")])),
+  /price changed/,
+);
+checks++;
+const afterPrice = await product(shirt.id),
+  options = afterPrice.variants.map((v) => ({
+    ...v,
+    label: v.id === medium.id ? "Medium / Jet Black" : v.label,
+    active: !!v.active,
+    preorder: !!v.preorder,
+  }));
+await send(owner, {
+  action: "variants",
+  id: shirt.id,
+  version: afterPrice.version,
+  variants: options,
+});
+check(
+  (await state()).admin.items.find((i) => i.id === orderItems[0].id)
+    .variant_label === "Medium / Black",
+  "renaming option preserves original ordered name",
+);
+const voidOrder = await send(
+  user,
+  gearOrder([{ ...line("Returned"), price: 2300 }]),
+);
+const beforeVariantVoid = (await product(shirt.id)).variants[0].stock;
+await send(owner, {
+  action: "reject",
+  id: voidOrder.order.id,
+  reason: "Returned unopened",
+  returned: true,
+});
+check(
+  (await product(shirt.id)).variants[0].stock === beforeVariantVoid + 1,
+  "void restores option stock instead of unassigned stock",
+);
+const pre = await send(
+  user,
+  gearOrder([
+    {
+      id: shirt.id,
+      price: 2000,
+      qty: 2,
+      variantId: large.id,
+      personalization: "Arroyo",
+    },
+  ]),
+);
+check(
+  (await state()).admin.items.find((i) => i.order_id === pre.order.id)
+    .fulfillment === "awaiting_stock",
+  "preorders start awaiting stock and preserve requested quantity",
+);
+shirt = await product(shirt.id);
+const beforeArchive = snapshot();
+await send(owner, {
+  action: "archive",
+  id: shirt.id,
+  version: shirt.version,
+  archived: true,
+});
+check(
+  !(await readState(db, user)).products.some((p) => p.id === shirt.id),
+  "archived products hidden from members",
+);
+await assert.rejects(
+  () =>
+    send(
+      user,
+      gearOrder([
+        {
+          id: shirt.id,
+          price: 2000,
+          qty: 1,
+          variantId: large.id,
+          personalization: "Hidden",
+        },
+      ]),
+    ),
+  /not ready/,
+);
+checks++;
+check(
+  (await readState(db, user)).orders.some((o) => o.id === pre.order.id),
+  "archiving preserves member order history",
+);
+shirt = await product(shirt.id);
+await send(owner, {
+  action: "archive",
+  id: shirt.id,
+  version: shirt.version,
+  archived: false,
+});
+await send(owner, {
+  action: "receive",
+  id: shirt.id,
+  variantId: medium.id,
+  qty: 3,
+  amount: 3300,
+  reference: "Shirt supplier batch",
+});
+check(
+  (await state()).admin.restocks.some(
+    (r) => r.variant_id === medium.id && r.qty === 3,
+  ),
+  "option restocks capture cost and quantity separately",
+);
+const snack = await product();
+await send(owner, {
+  action: "price",
+  id: snack.id,
+  version: snack.version,
+  price: 263,
+});
+check(
+  (await product()).price === 275,
+  "snack pricing always rounds upward to nearest quarter",
+);
+const { suggestedPrice, priceMargin, itemPerformance } = await import(
+  `${out}/pricing.mjs`
+);
+check(
+  suggestedPrice(100, 30, 0, true) === 150 &&
+    suggestedPrice(100, 0, 0, true) === 100,
+  "calculator quarter rounding handles exact multiples",
+);
+check(
+  Math.abs(priceMargin(107, 100, 7).profit) < 0.00001,
+  "margin removes included sales tax before comparing cost",
+);
+const oldSnapshots = JSON.stringify(
+  sqlite.prepare("SELECT * FROM order_items ORDER BY rowid").all(),
+);
+let changing = await product();
+await send(owner, {
+  action: "price",
+  id: changing.id,
+  version: changing.version,
+  price: 300,
+  cost: 200,
+  taxBp: 0,
+});
+check(
+  JSON.stringify(
+    sqlite.prepare("SELECT * FROM order_items ORDER BY rowid").all(),
+  ) === oldSnapshots,
+  "base price and cost updates preserve all historical items",
+);
+const report = itemPerformance((await state()).admin, shirt.id);
+check(
+  report.units === 4 &&
+    report.sales === 8000 &&
+    report.knownCost === 3600 &&
+    report.profit === 4400,
+  "item performance excludes voids and uses immutable per-line cost",
+);
+const unknownReport = itemPerformance(
+  {
+    orders: [{ id: "u", status: "paid", created_at: 1 }],
+    items: [
+      {
+        order_id: "u",
+        product_id: "p",
+        qty: 2,
+        price: 100,
+        cost: null,
+        tax_bp: 0,
+      },
+    ],
+  },
+  "p",
+);
+check(
+  unknownReport.profit === null && unknownReport.unknownUnits === 2,
+  "unknown historical cost remains explicitly unknown",
+);
+await memberChange({ snacks: true, gear: false });
+check(
+  (await readState(db, user)).products.every((p) => p.category !== "Gear"),
+  "snack-only accounts cannot see gear",
+);
+await assert.rejects(
+  () =>
+    send(
+      user,
+      gearOrder([
+        {
+          id: shirt.id,
+          price: 2000,
+          qty: 1,
+          variantId: large.id,
+          personalization: "Denied",
+        },
+      ]),
+    ),
+  /cannot purchase/,
+);
+checks++;
+shirt = await product("test-shirt");
+await send(owner, {
+  action: "variants",
+  id: shirt.id,
+  version: shirt.version,
+  variants: shirt.variants.map((v) => ({
+    ...v,
+    active: false,
+    preorder: !!v.preorder,
+  })),
+});
+const publicShirt = (await readState(db, bothAdmin)).products.find(
+  (p) => p.id === shirt.id,
+);
+check(
+  publicShirt.option_required,
+  "option requirement persists independently of option visibility",
+);
+await memberChange({ snacks: false, gear: true });
+const hiddenShirt = (await readState(db, user)).products.find(
+  (p) => p.id === shirt.id,
+);
+check(
+  hiddenShirt.option_required && hiddenShirt.variants.length === 0,
+  "hiding all options cannot expose the unassigned base stock as a sale option",
+);
+shirt = await product("test-shirt");
+const manyOptions = [
+  ...shirt.variants.map((v) => ({
+    ...v,
+    active: false,
+    preorder: !!v.preorder,
+  })),
+  ...Array.from({ length: 78 }, (_, i) => ({
+    label: "Future option " + i,
+    size: String(i),
+    color: "Test",
+    active: false,
+    preorder: true,
+  })),
+];
+await send(owner, {
+  action: "variants",
+  id: shirt.id,
+  version: shirt.version,
+  variants: manyOptions,
+});
+check(
+  (await product(shirt.id)).variants.length === 80,
+  "large preset list is saved in one bounded SQL batch",
+);
 // Session revocation between authorization and transaction commit must win.
-const currentActor=await db.prepare('SELECT id FROM members WHERE user_id=?').bind(owner.userId).first();
-const guardToken='a'.repeat(64);sqlite.prepare('INSERT INTO auth_sessions(token_hash,member_id,created_at,expires_at) VALUES(?,?,?,?)').run(guardToken,currentActor.id,Date.now(),Date.now()+60000);
-const originalBatch=db.batch;let revoked=false;
-db.batch=async statements=>{if(!revoked){revoked=true;sqlite.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(guardToken)}return originalBatch(statements)};
-const priorSettings=JSON.stringify(sqlite.prepare('SELECT * FROM settings').all());
-try{await assert.rejects(()=>mutate(db,{...owner,tokenHash:guardToken},{action:'settings',requestId:crypto.randomUUID(),cashInstructions:'Unauthorised race write',cashtag:'Injected',reminderDays:3}),/record changed/);checks++}finally{db.batch=originalBatch}
-check(JSON.stringify(sqlite.prepare('SELECT * FROM settings').all())===priorSettings,'revoked in-flight session cannot commit a management write');
-console.log(`PASS: ${checks} financial, inventory, access, and idempotency checks.`);
+const currentActor = await db
+  .prepare("SELECT id FROM members WHERE user_id=?")
+  .bind(owner.userId)
+  .first();
+const guardToken = "a".repeat(64);
+sqlite
+  .prepare(
+    "INSERT INTO auth_sessions(token_hash,member_id,created_at,expires_at) VALUES(?,?,?,?)",
+  )
+  .run(guardToken, currentActor.id, Date.now(), Date.now() + 60000);
+const originalBatch = db.batch;
+let revoked = false;
+db.batch = async (statements) => {
+  if (!revoked) {
+    revoked = true;
+    sqlite
+      .prepare("DELETE FROM auth_sessions WHERE token_hash=?")
+      .run(guardToken);
+  }
+  return originalBatch(statements);
+};
+const priorSettings = JSON.stringify(
+  sqlite.prepare("SELECT * FROM settings").all(),
+);
+try {
+  await assert.rejects(
+    () =>
+      mutate(
+        db,
+        { ...owner, tokenHash: guardToken },
+        {
+          action: "settings",
+          requestId: crypto.randomUUID(),
+          cashInstructions: "Unauthorised race write",
+          cashtag: "Injected",
+          reminderDays: 3,
+        },
+      ),
+    /record changed/,
+  );
+  checks++;
+} finally {
+  db.batch = originalBatch;
+}
+check(
+  JSON.stringify(sqlite.prepare("SELECT * FROM settings").all()) ===
+    priorSettings,
+  "revoked in-flight session cannot commit a management write",
+);
+console.log(
+  `PASS: ${checks} financial, inventory, access, and idempotency checks.`,
+);

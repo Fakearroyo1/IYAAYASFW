@@ -28,6 +28,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: node tests/pilot.mjs
+      - run: node tests/beta.mjs
+      - run: node tests/ui-contracts.mjs
       - run: node tests/http-security.mjs
       - run: pnpm run build
       - run: node tests/auth-integration.mjs

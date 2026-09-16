@@ -63,5 +63,29 @@
       "monster-white.jpg.002.b64",
       "monster-white.jpg.003.b64"
     ]
+  },
+  {
+    "path": "public/brand/logo.png",
+    "sha256": "65f126e463f66c669a38a8cc2dd4506794ff313e35e65aa0d1d3cc9dc320daec",
+    "parts": [
+      "logo.png.000.b64",
+      "logo.png.001.b64",
+      "logo.png.002.b64",
+      "logo.png.003.b64",
+      "logo.png.004.b64",
+      "logo.png.005.b64",
+      "logo.png.006.b64",
+      "logo.png.007.b64",
+      "logo.png.008.b64",
+      "logo.png.009.b64",
+      "logo.png.010.b64",
+      "logo.png.011.b64",
+      "logo.png.012.b64",
+      "logo.png.013.b64",
+      "logo.png.014.b64",
+      "logo.png.015.b64",
+      "logo.png.016.b64",
+      "logo.png.017.b64"
+    ]
   }
 ]
