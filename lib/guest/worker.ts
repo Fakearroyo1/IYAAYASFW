@@ -57,9 +57,7 @@ async function handle(request: Request, env: GearEnv): Promise<Response> {
       path,
     )
   )
-    return env.ASSETS.fetch(
-      new Request(new URL(path === "/" ? "/index.html" : path, url), request),
-    );
+return env.ASSETS.fetch(request);
   if (!["GET", "POST"].includes(request.method))
     return new Response(null, { status: 405 });
   if (
