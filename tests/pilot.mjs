@@ -11,6 +11,7 @@ for (const name of [
   "core",
   "access",
   "products",
+  "gear",
   "orders",
   "service",
   "pricing",

@@ -75,7 +75,10 @@ export async function POST(request: Request) {
       return json({ error: "Open the store and try again." }, 403);
     if (!request.headers.get("content-type")?.includes("application/json"))
       return json({ error: "JSON is required." }, 415);
-    const body = await readJson(request, 24000);
+    const verifiedAdmin =
+      !!env.DB && user.role === "admin" && (await adminVerified(env.DB, user));
+    // Large option matrices remain bounded and require an already verified admin.
+    const body = await readJson(request, verifiedAdmin ? 64000 : 24000);
     if (!env.DB)
       return json(
         {

@@ -147,7 +147,7 @@ export async function historyPage(
     key = "e.id";
     if (options.productId) {
       where.push(
-        "e.target=? AND e.kind IN('stock_received','price_updated','product_updated')",
+        "e.target=? AND e.kind IN('stock_received','price_updated','product_updated','gear_saved')",
       );
       values.push(options.productId);
     }

@@ -9,10 +9,17 @@
   "theme_color": "#f5f5f7",
   "icons": [
     {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
       "src": "/brand/logo.png",
       "sizes": "1080x1080",
       "type": "image/png",
       "purpose": "any"
     }
-  ]
+  ],
+  "description": "Your unit snack bar and gear, ready for a quick visit."
 }

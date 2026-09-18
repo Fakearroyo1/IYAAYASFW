@@ -44,12 +44,16 @@ import {
   loadCart,
   saveCart,
   cartLines,
-  cartValid,
+  canAddLine,
+  productPrice,
+  gearKey,
 } from "@/lib/pilot/cart";
 import PricingHub from "./store/pricing-hub";
 import GearManager from "./store/gear-manager";
 import PickupBoard from "./store/pickup-board";
 import Checkout from "./store/checkout";
+import BagItems from "./store/bag-items";
+import InstallGuide from "./store/install-guide";
 import CommunityBoard from "./store/community";
 import TeamBoard, { ModerationQueue } from "./store/team-board";
 import TransactionHub from "./store/transaction-hub";
@@ -182,6 +186,7 @@ export default function Pilot() {
     [memberFilter, setMemberFilter] = useState("all"),
     [uploading, setUploading] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState("pending");
+  const [gearRevision, setGearRevision] = useState(0);
   const [gearId, setGearId] = useState(""),
     [pricingId, setPricingId] = useState(""),
     [showArchived, setShowArchived] = useState(false);
@@ -326,11 +331,58 @@ export default function Pilot() {
       (!data.settings.enabled || !p.active || p.archived || p.price === null)
     )
       return;
+    if (n > 0) {
+      const candidate = line || {
+        ...p,
+        key,
+        qty: 0,
+        currentPrice: p.price,
+        stockKey: p.id,
+      };
+      const quantity = candidate.qty + n;
+      if (
+        quantity > 30 ||
+        (line
+          ? !canAddLine(line, lines)
+          : !readyForSale(p as any) || (!p.preorder && p.stock < quantity))
+      )
+        return;
+    }
     setCart((c) => {
       const q = Math.max(0, Math.min(30, (c[key] || 0) + n));
       const next = { ...c };
       if (q) next[key] = q;
       else delete next[key];
+      return next;
+    });
+  }
+  function removeLine(key: string) {
+    if (busyRef.current || pending) return;
+    setCart((c) => {
+      const next = { ...c };
+      delete next[key];
+      return next;
+    });
+  }
+  function acceptPrice(p: Row) {
+    if (busyRef.current || pending || !p.currentPrice || p.missingOption)
+      return;
+    const key = gearKey(
+      p.id,
+      p.variantId || "",
+      p.personalization || "",
+      p.currentPrice,
+    );
+    if ((cart[key] || 0) + p.qty > 30) {
+      setError(
+        "Reduce this option to 30 units before accepting the new price.",
+      );
+      return;
+    }
+    setCart((c) => {
+      const next = { ...c };
+      delete next[p.key];
+      next[key] = (next[key] || 0) + p.qty;
       return next;
     });
   }
@@ -433,7 +485,11 @@ export default function Pilot() {
           "Member added. Generate a private setup code for their First Time sign-in.",
         );
       }
-      return true;
+      if (request.action === "saveGear") {
+        setGearId(request.id);
+        setGearRevision((n) => n + 1);
+      }
+      return j;
     } catch (e) {
       setError(
         e instanceof Error && e.name !== "AbortError"
@@ -502,26 +558,28 @@ export default function Pilot() {
   }
   function open(kind: string, row: Row = {}) {
     setError("");
-    setModal({ ...row, kind });
-  }
-  const cartReady =
-    !!data.settings.enabled &&
-    ["snacks", "gear"].some((shop) =>
-      cartValid(
-        lines.filter((p) => (p.category === "Gear") === (shop === "gear")),
-      ),
-    );
-  function checkout() {
-    if (!cartReady) {
-      setError(
-        data.settings.enabled
-          ? "Review your bag: an item is unavailable or no longer has enough stock."
-          : "The shop is paused.",
-      );
+    if (kind === "product" && row.category === "Gear") {
+      setGearId(row.id);
+      setTab("inventory");
       return;
     }
+    setModal({ ...row, kind });
+  }
+  function checkout() {
     open("checkout");
   }
+  const openedBag = useRef(false);
+  useEffect(() => {
+    if (
+      !loading &&
+      !openedBag.current &&
+      new URLSearchParams(window.location.search).get("bag") === "1"
+    ) {
+      openedBag.current = true;
+      setModal({ kind: "checkout" });
+      window.history.replaceState(null, "", "/?view=" + view);
+    }
+  }, [loading]);
   const basket = (
     <>
       <div className="section-title">
@@ -534,58 +592,15 @@ export default function Pilot() {
           text="Add the items you're taking."
         />
       ) : (
-        <div className="bag-lines">
-          {lines.map((p) => (
-            <div className="bag-line" key={p.key}>
-              <div>
-                <strong>{p.name}</strong>
-                {p.variantLabel ? <small>{p.variantLabel}</small> : null}
-                {p.personalization ? (
-                  <small>Personalization: {p.personalization}</small>
-                ) : null}
-                <small>
-                  {money(p.price)} each{p.preorder ? " · Preorder" : ""}
-                </small>
-              </div>
-              <div className="bag-right">
-                <strong>{money(p.price * p.qty)}</strong>
-                <div className="stepper">
-                  <button
-                    type="button"
-                    aria-label={"Remove one " + p.name}
-                    onClick={() => qty(p.key, -1)}
-                    disabled={busy || !!pending}
-                  >
-                    <Minus size={15} />
-                  </button>
-                  <span>{p.qty}</span>
-                  <button
-                    type="button"
-                    aria-label={"Add one " + p.name}
-                    onClick={() => qty(p.key, 1)}
-                    disabled={
-                      busy ||
-                      !!pending ||
-                      !data.settings.enabled ||
-                      !readyForSale(p as any) ||
-                      (cart[p.key] || 0) >=
-                        Math.min(30, p.preorder ? 30 : p.stock)
-                    }
-                  >
-                    <Plus size={15} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <BagItems
+          lines={lines}
+          busy={busy || !!pending}
+          onQuantity={qty}
+          onRemove={removeLine}
+          onPrice={acceptPrice}
+        />
       )}
-      {count && !cartValid(lines) ? (
-        <p className="notice warning">
-          An item changed or has insufficient stock. Remove it and review the
-          product before checkout.
-        </p>
-      ) : null}
+
       <div className="bag-total">
         <span>Total</span>
         <strong>{money(total)}</strong>
@@ -958,6 +973,10 @@ export default function Pilot() {
           ) : tab === "pricing" ? (
             <PricingHub
               key={pricingId}
+              onGear={(id) => {
+                setGearId(id);
+                setTab("inventory");
+              }}
               data={{
                 ...data,
                 products: pricingId
@@ -974,17 +993,20 @@ export default function Pilot() {
             <PickupBoard data={data} send={send} busy={busy || !!pending} />
           ) : tab === "inventory" &&
             gearId &&
-            products.some((p) => p.id === gearId) ? (
+            (gearId === "new" || products.some((p) => p.id === gearId)) ? (
             <GearManager
-              p={products.find((p) => p.id === gearId)!}
+              key={gearId + ":" + gearRevision}
+              p={
+                products.find((p) => p.id === gearId) || {
+                  category: "Gear",
+                  variants: [],
+                }
+              }
+              data={data}
               send={send}
               open={open}
               busy={busy || !!pending}
               onBack={() => setGearId("")}
-              onPricing={() => {
-                setPricingId(gearId);
-                setTab("pricing");
-              }}
             />
           ) : tab === "inventory" ? (
             <section className="panel">
@@ -992,11 +1014,18 @@ export default function Pilot() {
                 <div>
                   <h2>Inventory</h2>
                   <p className="fine">
-                    Manage product information and stock. Selling prices are in
-                    the Pricing hub.
+                    Manage snack stock here and snack prices in the Pricing hub.
+                    Gear details, prices, and options live in the Gear Manager.
                   </p>
                 </div>
-                <Button onClick={() => open("product")}>Add product</Button>
+                <div className="inline-actions">
+                  <Button variant="outline" onClick={() => open("product")}>
+                    Add snack item
+                  </Button>
+                  <Button onClick={() => setGearId("new")}>
+                    New gear item
+                  </Button>
+                </div>
               </div>
               <div className="admin-filters">
                 <Field label="Search inventory">
@@ -1112,8 +1141,11 @@ export default function Pilot() {
                             <Button
                               variant="outline"
                               onClick={() => {
-                                setPricingId(p.id);
-                                setTab("pricing");
+                                if (p.category === "Gear") setGearId(p.id);
+                                else {
+                                  setPricingId(p.id);
+                                  setTab("pricing");
+                                }
                               }}
                             >
                               Price
@@ -1539,6 +1571,7 @@ export default function Pilot() {
             Email the store team
           </a>
         </div>
+        <InstallGuide />
         <div className="balance-grid">
           <section className="balance-card">
             <span>Running tab</span>
@@ -1741,9 +1774,10 @@ export default function Pilot() {
       });
       return;
     }
-    if (r.kind === "variantStock") {
+    if (["variantStock", "gearStock"].includes(r.kind)) {
       send({
-        action: "variantStock",
+        action: r.kind,
+        id: r.id,
         variantId: r.id,
         version: r.version,
         previousStock: r.stock,
@@ -1869,6 +1903,7 @@ export default function Pilot() {
     archive: modal?.archived ? "Restore product" : "Archive product",
     allocate: "Allocate existing stock",
     variantStock: "Adjust option stock",
+    gearStock: "Adjust gear stock",
     shop: modal?.enabled ? "Open the shop" : "Pause the shop",
     password: "Private recovery code",
     revoke: "Sign out member devices",
@@ -2048,10 +2083,27 @@ export default function Pilot() {
               </div>
             </div>
             <div className="shopping-balance">
-              <span>
-                <Wallet size={17} />
-                Tab <strong>{money(member?.debt || 0)}</strong>
-              </span>
+              {view === "snacks" ? (
+                <>
+                  <span>
+                    <Wallet size={17} />
+                    Tab <strong>{money(member?.debt || 0)}</strong>
+                  </span>
+                  <span>
+                    <strong>
+                      {money(
+                        Math.max(
+                          0,
+                          (member?.tab_limit ?? 3000) - (member?.debt || 0),
+                        ),
+                      )}
+                    </strong>{" "}
+                    left before your limit
+                  </span>
+                </>
+              ) : (
+                <span>Pickup only · Cash, Cash App, or confirmed credit</span>
+              )}
               <span>
                 Available credit <strong>{money(member?.credit || 0)}</strong>
               </span>
@@ -2060,7 +2112,9 @@ export default function Pilot() {
                 className="text-link"
                 onClick={() => navigate("account")}
               >
-                Manage balance
+                {view === "snacks" && member?.debt > 0
+                  ? "Settle my tab"
+                  : "My account"}
               </button>
             </div>
             {view === "snacks" && member?.debt >= data.settings.tabReminder ? (
@@ -2071,6 +2125,61 @@ export default function Pilot() {
             ) : null}
             <div className="store-layout">
               <section>
+                {view === "snacks" &&
+                !search &&
+                category === "All" &&
+                data.buyAgain?.length ? (
+                  <section className="buy-again" aria-label="Buy again">
+                    <div className="section-title">
+                      <div>
+                        <h2>Buy again</h2>
+                        <p className="fine">
+                          Your recent picks, at today’s prices.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="repeat-items">
+                      {data.buyAgain
+                        .map((id: string) => products.find((p) => p.id === id))
+                        .filter(Boolean)
+                        .map((p: Row) => (
+                          <article className="repeat-item" key={p.id}>
+                            {p.image ? (
+                              <img src={p.image} alt="" loading="lazy" />
+                            ) : (
+                              <Package size={28} />
+                            )}
+                            <div>
+                              <strong>{p.name}</strong>
+                              <small>
+                                {readyForSale(p)
+                                  ? money(p.price)
+                                  : availability(p)}
+                              </small>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              aria-label={"Add one " + p.name + " again"}
+                              disabled={
+                                busy ||
+                                !!pending ||
+                                !data.settings.enabled ||
+                                !readyForSale(p) ||
+                                (cart[p.id] || 0) >=
+                                  Math.min(30, p.preorder ? 30 : p.stock)
+                              }
+                              onClick={() => qty(p.id, 1)}
+                            >
+                              <Plus size={15} />
+                              {cart[p.id] ? cart[p.id] + " in bag" : "Add"}
+                            </Button>
+                          </article>
+                        ))}
+                    </div>
+                  </section>
+                ) : null}
                 <div className="store-tools">
                   {view !== "gear" ? (
                     <Tabs value={category} onValueChange={setCategory}>
@@ -2131,7 +2240,7 @@ export default function Pilot() {
                           ) : (
                             <span className="product-type">{p.category}</span>
                           )}
-                          {p.preorder ? (
+                          {availability(p) === "Preorder" ? (
                             <span className="product-badge">Preorder</span>
                           ) : null}
                         </div>
@@ -2156,13 +2265,15 @@ export default function Pilot() {
                           <div className="product-bottom">
                             <span
                               className={
-                                p.price === null ? "unset-price" : "price"
+                                productPrice(p).price === null
+                                  ? "unset-price"
+                                  : "price"
                               }
                             >
-                              {p.price === null
+                              {productPrice(p).price === null
                                 ? "Price unavailable"
-                                : money(p.price)}
-                              {p.variants?.length ? " + options" : ""}
+                                : (productPrice(p).varies ? "From " : "") +
+                                  money(productPrice(p).price)}
                             </span>
                             {p.category === "Gear" ? (
                               <Button variant="secondary" asChild>
@@ -2251,10 +2362,10 @@ export default function Pilot() {
                 {basket}
                 <Button
                   className="full"
-                  disabled={!cartReady || !!pending || busy}
+                  disabled={!count || !!pending || busy}
                   onClick={checkout}
                 >
-                  Checkout <ChevronRight size={17} />
+                  Review bag <ChevronRight size={17} />
                 </Button>
                 <p className="fine">No automatic charges.</p>
                 {member ? (
@@ -2296,9 +2407,9 @@ export default function Pilot() {
       </main>
       {count && view !== "admin" ? (
         <div className="mobile-bag">
-          <Button onClick={checkout} disabled={!cartReady || busy || !!pending}>
+          <Button onClick={checkout} disabled={busy || !!pending}>
             <ShoppingBag size={19} />
-            Checkout · {count} {count === 1 ? "item" : "items"}
+            Review bag · {count} {count === 1 ? "item" : "items"}
             <span>{money(total)}</span>
             <ChevronRight size={18} />
           </Button>
@@ -2347,6 +2458,9 @@ export default function Pilot() {
               preferredShop={view === "gear" ? "gear" : "snacks"}
               busy={busy || !!pending}
               send={send}
+              onQuantity={qty}
+              onRemove={removeLine}
+              onPrice={acceptPrice}
             />
           ) : modal?.kind === "verify" ? (
             <PaymentConfirmation
@@ -2507,7 +2621,7 @@ export default function Pilot() {
                           name="category"
                           defaultValue={modal.category || "Snacks"}
                         >
-                          {["Drinks", "Snacks", "Frozen", "Gear"].map((c) => (
+                          {["Drinks", "Snacks", "Frozen"].map((c) => (
                             <option key={c}>{c}</option>
                           ))}
                         </NativeSelect>
@@ -2540,11 +2654,6 @@ export default function Pilot() {
                       until pricing is ready.
                     </p>
                     <Field label="Stock adjustment reason" name="reason" />
-                    <Toggle
-                      name="preorder"
-                      label="Merchandise preorder (no stocked quantity)"
-                      checked={!!modal.preorder}
-                    />
                     <Toggle
                       name="active"
                       label="Make available for purchase"
@@ -2768,7 +2877,7 @@ export default function Pilot() {
                     </Button>
                   </>
                 ) : null}
-                {modal.kind === "variantStock" ? (
+                {["variantStock", "gearStock"].includes(modal.kind) ? (
                   <>
                     <h3>
                       {modal.name} · {modal.label}

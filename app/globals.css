@@ -3105,3 +3105,55 @@ fieldset:disabled {
 .verified-purchase {
   margin-left: 12px;
 }
+
+/* Gear editing and everyday purchasing share the existing light/dark tokens. */
+.gear-manager { max-width: 1120px; margin-inline: auto; }
+.gear-manager > .section-title { margin-top: 18px; }
+.gear-section { padding-block: 26px; border-bottom: 1px solid var(--border); }
+.gear-section h3 { margin-bottom: 14px; font-size: 19px; }
+.gear-section .field { margin-block: 12px; }
+.gear-section .form-grid { align-items: start; }
+.gear-section .form-grid > * { min-width: 0; }
+.gear-calculator { padding: 18px; }
+.gear-calculator .fine { margin-top: 12px; }
+.gear-options { display: grid; gap: 16px; margin-block: 18px; }
+.gear-options .variant-card { margin: 0; }
+.gear-save { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 24px; }
+.gear-save .fine { max-width: 440px; margin: 5px 0 0; }
+.gear-stock-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-block: 14px; border-bottom: 1px solid var(--border); }
+.gear-stock-row small { display: block; margin-top: 5px; color: var(--muted-foreground); }
+.gallery-editor small { display: block; padding: 8px; }
+.gallery-editor .inline-actions { flex-wrap: wrap; }
+.bag-item { padding-block: 12px; border-bottom: 1px solid var(--border); }
+.bag-item .bag-line { padding: 0; border: 0; }
+.bag-item-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+.bag-item-actions .text-link { display: inline-flex; align-items: center; gap: 5px; min-height: 36px; font-size: 13px; }
+.bag-issue { color: var(--warning-fg); background: var(--warning-bg); padding: 10px 12px; border-radius: 10px; margin: 10px 0 0; font-size: 13px; }
+.buy-again { margin-bottom: 26px; }
+.buy-again h2 { font-size: 20px; letter-spacing: -.03em; }
+.repeat-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.repeat-item { display: flex; align-items: center; gap: 12px; padding: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; min-width: 0; }
+.repeat-item img { width: 42px; height: 48px; object-fit: contain; flex-shrink: 0; }
+.repeat-item > div { min-width: 0; flex: 1; }
+.repeat-item strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.repeat-item small { color: var(--muted-foreground); display: block; margin-top: 4px; }
+.repeat-item button { flex-shrink: 0; min-height: 38px; }
+.install-guide { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; background: var(--card); border: 1px solid var(--border); padding: 20px 24px; border-radius: 20px; margin-bottom: 22px; }
+.install-guide .fine { margin: 5px 0 0; }
+.install-help { flex-basis: 100%; border-top: 1px solid var(--border); padding-top: 14px; }
+.install-help svg { display: inline-block; vertical-align: middle; }
+@media (max-width: 800px) {
+  .gear-save, .gear-stock-row { align-items: stretch; flex-direction: column; }
+  .gear-save .inline-actions > * { flex: 1; min-height: 44px; }
+  .gear-options .form-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .stepper button { min-width: 40px; min-height: 40px; }
+}
+@media (max-width: 580px) {
+  .repeat-items { grid-template-columns: 1fr; }
+  .gear-options .form-grid, .gear-section > .form-grid { grid-template-columns: 1fr; }
+  .gear-section { padding-block: 20px; }
+  .gear-manager.panel { padding: 18px; }
+  .install-guide { padding: 18px; }
+  .install-guide > button { width: 100%; }
+  .bag-right { min-width: 106px; }
+}

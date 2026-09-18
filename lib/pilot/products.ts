@@ -11,6 +11,7 @@ import {
   audit,
   guard,
 } from "./core";
+import { saveGear } from "./gear";
 import { canShop } from "./access";
 const imagePath = (v: any) => {
   const image = str(v, 500);
@@ -63,6 +64,41 @@ export async function extendedMutation(
   atomic: (db: DB, s: D1PreparedStatement[]) => Promise<unknown>,
 ) {
   const actor = m.id;
+  if (b.action === "saveGear") return saveGear(db, actor, b, atomic);
+  if (b.action === "gearStock") {
+    const id = str(b.id, 80),
+      stock = int(b.stock, 0, 100000),
+      reason = str(b.reason, 200);
+    const p = await first(
+      db,
+      "SELECT * FROM products WHERE id=? AND category='Gear'",
+      id,
+    );
+    if (!p || !reason)
+      fail("Choose a gear item and record the count adjustment reason.");
+    await atomic(db, [
+      guard(
+        db,
+        "EXISTS(SELECT 1 FROM products WHERE id=? AND version=? AND stock=?) AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=?)",
+        id,
+        int(b.version),
+        int(b.previousStock),
+        id,
+      ),
+      stmt(
+        db,
+        "UPDATE products SET stock=?,version=version+1 WHERE id=?",
+        stock,
+        id,
+      ),
+      audit(db, actor, "stock_adjusted", id, {
+        before: p.stock,
+        after: stock,
+        reason,
+      }),
+    ]);
+    return { ok: true };
+  }
   if (b.action === "details") {
     const id = str(b.id, 80),
       p = await first(db, "SELECT * FROM products WHERE id=?", id);

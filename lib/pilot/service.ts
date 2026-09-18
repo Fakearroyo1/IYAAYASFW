@@ -137,6 +137,23 @@ export async function readState(
     items: [],
     pages: {},
   };
+  // Only return product IDs from this member's effective, non-void purchases.
+  // The catalog remains authoritative for current access, pricing and availability.
+  result.buyAgain = access.snacks
+    ? (
+        await rows(
+          db,
+          `SELECT i.product_id FROM orders o JOIN item_balances i ON i.order_id=o.id
+     JOIN products p ON p.id=i.product_id LEFT JOIN product_details d ON d.product_id=p.id
+     WHERE o.member_id=? AND o.status<>'void' AND i.remaining_qty>0
+       AND p.active=1 AND p.category<>'Gear' AND COALESCE(d.archived,0)=0
+     GROUP BY i.product_id ORDER BY MAX(o.created_at) DESC,i.product_id LIMIT 6`,
+          m.id,
+        )
+      )
+        .map((r) => r.product_id)
+        .filter((id) => products.some((p: Row) => p.id === id))
+    : [];
   if (view !== "catalog") {
     const [orders, payments, pending] = await Promise.all([
       historyPage(db, m, "orders"),
