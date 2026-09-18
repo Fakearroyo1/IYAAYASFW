@@ -4,7 +4,14 @@ import { ArrowLeft, Package, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { gearKey, loadCart, saveCart, cartLines } from "@/lib/pilot/cart";
+import {
+  gearKey,
+  loadCart,
+  saveCart,
+  cartLines,
+  selectionState,
+  productPrice,
+} from "@/lib/pilot/cart";
 import { ProductReviews } from "@/app/store/community";
 import { BrandMark, ThemeToggle } from "@/app/store/appearance";
 type Row = Record<string, any>;
@@ -21,7 +28,7 @@ export default function ProductPage({ id }: { id: string }) {
     [selectedImage, setSelectedImage] = useState(0),
     [added, setAdded] = useState(false);
   useEffect(() => {
-    fetch("/api/pilot", { cache: "no-store" })
+    fetch("/api/pilot?view=catalog", { cache: "no-store" })
       .then(async (r) => {
         if (r.status === 401) {
           window.location.replace(
@@ -40,21 +47,27 @@ export default function ProductPage({ id }: { id: string }) {
     ),
     variants = p?.variants.filter((v: Row) => v.active) || [],
     v = variants.find((v: Row) => v.id === option),
-    price = v?.price ?? p?.price,
-    preorder = v ? v.preorder : p?.preorder,
-    stock = v ? v.stock : p?.stock,
+    selected = p ? selectionState(p, option) : null,
+    price = selected?.price,
+    preorder = selected?.preorder,
+    stock = selected?.stock || 0,
+    priceRange = p ? productPrice(p) : { price: null, varies: false },
     images = [
       ...new Set([p?.image, ...(p?.images || [])].filter(Boolean)),
     ] as string[],
     available =
       p &&
       data?.settings.enabled &&
-      (!p.option_required || v) &&
+      !selected?.needsOption &&
+      Number.isInteger(qty) &&
+      qty > 0 &&
+      qty <= 30 &&
       price > 0 &&
       p.tax_bp !== null &&
       (preorder || stock >= qty);
   const gear = p?.category === "Gear",
-    shopHref = gear ? "/?view=gear" : "/?view=snacks";
+    shopHref = gear ? "/?view=gear" : "/?view=snacks",
+    bagHref = shopHref + "&bag=1";
   function add(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -93,7 +106,7 @@ export default function ProductPage({ id }: { id: string }) {
         <div className="inline-actions">
           <ThemeToggle />
           <Button asChild variant="outline">
-            <a href={shopHref}>
+            <a href={bagHref}>
               <ShoppingBag size={17} />
               Your bag
             </a>
@@ -150,8 +163,14 @@ export default function ProductPage({ id }: { id: string }) {
               <h1>{p.name}</h1>
               <p className="product-subtitle">{p.detail}</p>
               <p className="detail-price">
-                {price == null ? "Price unavailable" : money(price)}
-                {variants.length && !v ? " base price" : ""}
+                {selected?.needsOption
+                  ? priceRange.price == null
+                    ? "Price unavailable"
+                    : (priceRange.varies ? "From " : "") +
+                      money(priceRange.price)
+                  : price == null
+                    ? "Price unavailable"
+                    : money(price)}
               </p>
               <p className="fine">Includes configured tax.</p>
               <div className="product-description">
@@ -162,7 +181,9 @@ export default function ProductPage({ id }: { id: string }) {
               </div>
               <p className="product-balance">
                 <strong>{money(data.member.credit)} credit available</strong>
-                <span>{money(data.member.debt)} on your tab</span>
+                {!gear ? (
+                  <span>{money(data.member.debt)} on your tab</span>
+                ) : null}
               </p>
               <form onSubmit={add}>
                 <fieldset disabled={!data.settings.enabled}>
@@ -174,7 +195,9 @@ export default function ProductPage({ id }: { id: string }) {
                           value={option}
                           onChange={(e) => {
                             setOption(e.target.value);
+                            setQty(1);
                             setAdded(false);
+                            setError("");
                           }}
                           required
                         >
@@ -199,6 +222,7 @@ export default function ProductPage({ id }: { id: string }) {
                       <span>Quantity</span>
                       <Input
                         type="number"
+                        disabled={!!selected?.needsOption}
                         min={1}
                         max={preorder ? 30 : Math.min(30, stock || 1)}
                         value={qty}
@@ -236,21 +260,20 @@ export default function ProductPage({ id }: { id: string }) {
                       </small>
                     </label>
                   ) : null}
-                  <p className="notice">
-                    {preorder
-                      ? "Preorder · Pay before the group order is placed. Check My account for pickup updates."
-                      : stock > 0
-                        ? gear
-                          ? "In stock · Check My account for pickup status."
-                          : "In stock · Add to your tab at checkout."
-                        : "Currently out of stock."}
+                  <p className="notice" role="status" aria-live="polite">
+                    {selected?.needsOption
+                      ? variants.length
+                        ? "Select an option to check availability."
+                        : "No options are currently available."
+                      : preorder
+                        ? "Preorder · Pay before the group order is placed. Check My account for pickup updates."
+                        : stock > 0
+                          ? gear
+                            ? "In stock · Check My account for pickup status."
+                            : "In stock · Add to your tab at checkout."
+                          : "Currently out of stock."}
                     {p.pickup_note ? " " + p.pickup_note : ""}
                   </p>
-                  {p.option_required && !variants.length ? (
-                    <p className="notice warning">
-                      Product options are currently unavailable.
-                    </p>
-                  ) : null}
                   {!data.settings.enabled ? (
                     <p className="notice warning">
                       The shop is temporarily paused.
@@ -272,7 +295,7 @@ export default function ProductPage({ id }: { id: string }) {
                       Add to bag{available ? " · " + money(price * qty) : ""}
                     </Button>
                     <Button variant="outline" asChild>
-                      <a href={shopHref}>View bag & checkout</a>
+                      <a href={bagHref}>View bag & checkout</a>
                     </Button>
                   </div>
                 </fieldset>

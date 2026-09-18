@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShoppingBag, Wallet, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import BagItems from "./bag-items";
 import { cartValid } from "@/lib/pilot/cart";
 import { money, type Row } from "./shared";
 export default function Checkout({
@@ -11,6 +12,9 @@ export default function Checkout({
   preferredShop,
   busy,
   send,
+  onQuantity,
+  onRemove,
+  onPrice,
 }: {
   lines: Row[];
   member: Row;
@@ -18,15 +22,29 @@ export default function Checkout({
   preferredShop: string;
   busy: boolean;
   send: (b: Row) => Promise<unknown>;
+  onQuantity?: (key: string, delta: number) => void;
+  onRemove?: (key: string) => void;
+  onPrice?: (p: Row) => void;
 }) {
   const availableShops = ["snacks", "gear"].filter((s) =>
     lines.some((p) => (p.category === "Gear") === (s === "gear")),
   );
-  const [shop, setShop] = useState(
-    availableShops.includes(preferredShop)
-      ? preferredShop
-      : availableShops[0] || "snacks",
+  const readyShops = availableShops.filter((s) =>
+    cartValid(lines.filter((p) => (p.category === "Gear") === (s === "gear"))),
   );
+  const [shop, setShop] = useState(
+    readyShops.includes(preferredShop)
+      ? preferredShop
+      : readyShops[0] || availableShops[0] || "snacks",
+  );
+  const shopList = availableShops.join(",");
+  useEffect(() => {
+    if (availableShops.length && !availableShops.includes(shop)) {
+      setShop(availableShops[0]);
+      setUseCredit(false);
+      setMethod("cash");
+    }
+  }, [shopList, shop]);
   const [method, setMethod] = useState("cash"),
     [useCredit, setUseCredit] = useState(false);
   const selected = lines.filter(
@@ -99,21 +117,19 @@ export default function Checkout({
             </p>
           </div>
         ) : null}
-        <div className="checkout-lines">
-          {selected.map((p) => (
-            <div className="checkout-line" key={p.key}>
-              <div>
-                <strong>{p.name}</strong>
-                <small>
-                  {p.qty} × {money(p.price)}
-                  {p.variantLabel ? " · " + p.variantLabel : ""}
-                </small>
-                {p.personalization ? <small>{p.personalization}</small> : null}
-              </div>
-              <strong>{money(p.price * p.qty)}</strong>
-            </div>
-          ))}
-        </div>
+        {selected.length ? (
+          <BagItems
+            lines={selected}
+            busy={busy}
+            onQuantity={onQuantity}
+            onRemove={onRemove}
+            onPrice={onPrice}
+          />
+        ) : (
+          <p className="notice">
+            Your bag is empty. Add an item to start a purchase.
+          </p>
+        )}
         {shop === "snacks" ? (
           <div className="payment-choice selected">
             <Wallet size={22} />
@@ -186,7 +202,7 @@ export default function Checkout({
             prevent you from spending it.
           </p>
         </div>
-        <dl className="checkout-totals">
+        <dl className="checkout-totals" aria-live="polite">
           <div>
             <dt>Purchase total</dt>
             <dd>{money(total)}</dd>
@@ -216,6 +232,15 @@ export default function Checkout({
             </div>
           ) : null}
         </dl>
+        {!settings.enabled ? (
+          <p className="notice warning">
+            The shop is temporarily paused. Your items stay in the bag.
+          </p>
+        ) : null}
+        <p className="fine">
+          Prices include any configured tax. Nothing is charged until you
+          confirm below.
+        </p>
         {exceeds ? (
           <p className="notice error" role="alert">
             This would exceed your {money(member.tab_limit)} tab limit. Use

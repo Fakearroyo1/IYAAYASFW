@@ -13,16 +13,18 @@ const require = createRequire(import.meta.url),
   );
 const directory = resolve(".sites-runtime/ui-contracts");
 mkdirSync(directory, { recursive: true });
-buildSync({
-  entryPoints: ["app/store/checkout.tsx"],
-  outfile: directory + "/checkout.cjs",
-  bundle: true,
-  platform: "node",
-  format: "cjs",
-  jsx: "automatic",
-  external: ["react", "react-dom"],
-  logLevel: "silent",
-});
+for (const entry of ["checkout", "gear-manager", "install-guide"]) {
+  buildSync({
+    entryPoints: ["app/store/" + entry + ".tsx"],
+    outfile: directory + "/" + entry + ".cjs",
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    jsx: "automatic",
+    external: ["react", "react-dom"],
+    logLevel: "silent",
+  });
+}
 const Checkout = require(directory + "/checkout.cjs").default;
 let checks = 0;
 const check = (ok, message) => {
@@ -61,6 +63,9 @@ const render = (lines, preferredShop = "snacks") =>
       preferredShop,
       busy: false,
       send: async () => true,
+      onQuantity: () => {},
+      onRemove: () => {},
+      onPrice: () => {},
     }),
   );
 let html = render([snack]);
@@ -93,6 +98,58 @@ check(
   html.includes("Each shop checks out separately") &&
     !html.includes("Test unit shirt"),
   "Mixed bag presents a separate snack checkout",
+);
+html = render([{ ...gear, currentPrice: 2700 }], "gear");
+check(
+  html.includes("Use $27.00 price") && html.includes("The price changed"),
+  "Changed gear price has an explicit acceptance control",
+);
+check(
+  html.includes('aria-label="Remove one Test unit shirt"') &&
+    html.includes("Remove</button>"),
+  "Mobile checkout includes quantity and remove controls",
+);
+html = render([{ ...snack, stock: 0 }, gear]);
+check(
+  html.includes("Test unit shirt") && html.includes('name="gear-method"'),
+  "Mixed cart opens a valid shop when the preferred shop is unavailable",
+);
+html = render([]);
+check(
+  html.includes("Your bag is empty") && /type="submit"[^>]*disabled/.test(html),
+  "Removing the final line leaves a clear empty state",
+);
+const GearManager = require(directory + "/gear-manager.cjs").default;
+html = renderToStaticMarkup(
+  React.createElement(GearManager, {
+    p: { category: "Gear", variants: [] },
+    data: {},
+    send: async () => true,
+    open: () => {},
+    busy: false,
+    onBack: () => {},
+  }),
+);
+check(
+  html.includes("Save draft") && html.includes("Publish item"),
+  "New gear has an explicit draft and publish workflow",
+);
+check(
+  html.includes("Base price") &&
+    html.includes("Full description") &&
+    html.includes("Upload product photos") &&
+    html.includes("Add custom option"),
+  "One gear form contains details, media, pricing and options",
+);
+check(
+  !html.includes("Save options") && !html.includes("Save product details"),
+  "Gear has no competing section save buttons",
+);
+const InstallGuide = require(directory + "/install-guide.cjs").default;
+html = renderToStaticMarkup(React.createElement(InstallGuide));
+check(
+  html.includes("Add to home screen"),
+  "Account installation control renders without requiring camera access",
 );
 const css = readFileSync("app/globals.css", "utf8"),
   light = {},

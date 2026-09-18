@@ -1,28 +1,889 @@
-'use client';
-import {useEffect,useState} from 'react';
-import {ArrowLeft,Plus,Trash2} from 'lucide-react';
-import {Button} from '@/components/ui/button';
-import {Input} from '@/components/ui/input';
-import {NativeSelect} from '@/components/ui/native-select';
-import {Field,money,type Row} from './shared';
-export default function GearManager({p,send,open,busy,onBack,onPricing}:{p:Row;send:(b:Row)=>Promise<any>;open:(kind:string,row?:Row)=>void;busy:boolean;onBack:()=>void;onPricing:()=>void}){
- return <section className="panel gear-manager"><Button type="button" variant="ghost" onClick={onBack}><ArrowLeft size={16}/>All inventory</Button><div className="section-title"><div><span className="eyebrow">Gear management</span><h2>{p.name}</h2><p className="fine">Product details, options, and pickup instructions.</p></div><div className="inline-actions"><Button type="button" variant="outline" onClick={()=>open('product',p)}>Edit item</Button><Button type="button" variant="outline" onClick={onPricing}>Manage pricing</Button><Button type="button" variant="outline" asChild><a href={'/products/'+encodeURIComponent(p.id)}>View product</a></Button></div></div><GearDetails key={'details:'+p.id} p={p} send={send} busy={busy}/><GearOptions key={'options:'+p.id} p={p} send={send} busy={busy} open={open}/></section>
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Field, money, type Row } from "./shared";
+import { Performance } from "./pricing-hub";
+import { suggestedPrice, priceMargin } from "@/lib/pilot/pricing";
+
+const dollars = (n: number | null | undefined) =>
+  n == null ? "" : String(n / 100);
+const cents = (s: string) =>
+  s.trim() === "" ? null : Math.round(Number(s) * 100);
+function draft(p: Row): Row {
+  return {
+    ...p,
+    name: p.name || "",
+    detail: p.detail || "",
+    description: p.description || "",
+    image: p.image || "",
+    images: p.images || [],
+    priceText: dollars(p.price),
+    costText: dollars(p.cost),
+    taxText: p.tax_bp == null ? "" : String(p.tax_bp / 100),
+    active: !!p.active,
+    preorder: !!p.preorder,
+    personalization_label: p.personalization_label || "",
+    personalization_required: !!p.personalization_required,
+    personalization_max: p.personalization_max || 30,
+    pickup_note: p.pickup_note || "",
+    stock: 0,
+    stockReason: "",
+    variants: (p.variants || []).map((v: Row) => ({
+      ...v,
+      priceText: dollars(v.price),
+      costText: dollars(v.cost),
+      active: !!v.active,
+      preorder: !!v.preorder,
+    })),
+  };
 }
-function GearDetails({p,send,busy}:{p:Row;send:(b:Row)=>Promise<any>;busy:boolean}){
- const [images,setImages]=useState<string[]>(p.images||[]),[uploading,setUploading]=useState(false),[error,setError]=useState('');
- async function upload(files:FileList|null){if(!files)return;setError('');if(files.length+images.length>8){setError('Use up to eight additional images.');return}setUploading(true);try{const next=[...images];for(const file of Array.from(files)){if(file.size>5*1024*1024)throw Error('Each image must be under 5 MB.');const form=new FormData();form.set('image',file);const r=await fetch('/api/product-images',{method:'POST',body:form});const j=await r.json() as Row;if(!r.ok)throw Error(j.error);next.push(j.image);setImages([...next])}}catch(e){setError(e instanceof Error?e.message:'Upload failed.')}finally{setUploading(false)}}
- async function save(e:React.FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);setError('');const ok=await send({action:'details',id:p.id,version:p.version,description:f.get('description'),images,personalizationLabel:f.get('label'),personalizationRequired:f.get('required')==='on',personalizationMax:Number(f.get('max')),pickupNote:f.get('pickup')});if(!ok)setError('Could not save. Review the message at the top of the page.')}
- return <details className="workbench" open><summary>Description, photos & personalization</summary><form onSubmit={save}><fieldset disabled={busy||uploading}><Field label="Product description"><textarea name="description" defaultValue={p.description} maxLength={5000} rows={5} placeholder="Materials, fit, sizing notes, ordering deadline, or other details."/></Field><div className="gallery-editor">{images.map((image,i)=><div key={image}><img src={image} alt={'Additional image '+(i+1)}/><div className="inline-actions"><Button type="button" size="sm" variant="ghost" disabled={i===0} onClick={()=>setImages(values=>{const next=[...values];[next[i-1],next[i]]=[next[i],next[i-1]];return next})}>Earlier</Button><Button type="button" size="icon" variant="ghost" aria-label={'Remove image '+(i+1)} onClick={()=>setImages(v=>v.filter(x=>x!==image))}><Trash2 size={15}/></Button></div></div>)}</div><Field label="Add detail photos (up to 8)"><Input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>{upload(e.target.files);e.target.value=''}}/></Field><p className="fine">JPG, PNG, or WebP · 5 MB each. The main product image is managed in Edit item. Save details to publish these photos.</p><div className="form-grid"><Field label="Personalization field label" name="label" defaultValue={p.personalization_label} maxLength={60} placeholder="Last name, initials, or custom text"/><Field label="Maximum characters" name="max" type="number" min={1} max={80} defaultValue={p.personalization_max||30} required/></div><label className="toggle"><input type="checkbox" name="required" defaultChecked={!!p.personalization_required}/>Require personalization before adding to the bag</label><p className="fine">For name tapes, use “Last name” and require this field. Members can add different names as separate lines, each with its own quantity.</p><Field label="Pickup instructions"><textarea name="pickup" defaultValue={p.pickup_note} maxLength={500} rows={3} placeholder="Where and when members can collect their order."/></Field>{error?<p className="notice error" role="alert">{error}</p>:null}<Button type="submit">{uploading?'Uploading…':'Save product details'}</Button></fieldset></form></details>
-}
-function GearOptions({p,send,open,busy}:{p:Row;send:(b:Row)=>Promise<any>;open:(kind:string,row?:Row)=>void;busy:boolean}){
- const [variants,setVariants]=useState<Row[]>((p.variants||[]).map((v:Row)=>({...v,active:!!v.active,preorder:!!v.preorder}))),[sizes,setSizes]=useState('XS, S, M, L, XL, 2XL, 3XL'),[colors,setColors]=useState(''),[preset,setPreset]=useState('shirt'),[message,setMessage]=useState('');
- // Refresh saved IDs/counts without discarding drafts in the other section.
- const savedOptions=JSON.stringify(p.variants||[]);
- useEffect(()=>{const saved=JSON.parse(savedOptions) as Row[];setVariants(current=>current.map(v=>{const match=saved.find(x=>v.id?x.id===v.id:x.label===v.label);return match?{...match,...v,id:match.id,stock:match.stock,price:match.price,cost:match.cost,version:match.version}:v}))},[savedOptions]);
- const edit=(i:number,values:Row)=>setVariants(v=>v.map((row,j)=>j===i?{...row,...values}:row));
- function addPresets(){const ss=preset==='name'?[{size:'',label:'Name tape'}]:sizes.split(',').map(s=>({size:s.trim(),label:s.trim()})).filter(s=>s.label),cs=colors.split(',').map(c=>c.trim()).filter(Boolean);if(!cs.length)cs.push('');const additions=ss.flatMap(s=>cs.map(color=>({label:[preset==='hoodie'?'Hoodie':preset==='shirt'?'Shirt':s.label,preset==='name'?'':s.size,color].filter(Boolean).join(' / '),size:s.size,color,active:true,preorder:!!p.preorder}))).filter(v=>!variants.some(x=>x.label.toLowerCase()===v.label.toLowerCase()));if(variants.length+additions.length>80){setMessage('Use up to 80 options per product.');return}setVariants([...variants,...additions]);setMessage('Options added to the draft. Save options to make them available.')}
- async function save(e:React.FormEvent){e.preventDefault();setMessage('');const ok=await send({action:'variants',id:p.id,version:p.version,variants:variants.map(v=>({id:v.id,label:v.label,size:v.size,color:v.color,active:!!v.active,preorder:!!v.preorder}))});if(!ok)setMessage('Could not save. Review the message at the top of the page.')}
- return <details className="workbench" open><summary>Sizes, colors & ordering options</summary><p className="fine">New options start with zero stock and inherit the base price. Use the Pricing hub for different option prices. Keep existing options and hide those no longer offered.</p><fieldset disabled={busy}><div className="option-presets"><div className="form-grid"><Field label="Common options"><NativeSelect value={preset} onChange={e=>setPreset(e.target.value)}><option value="shirt">Shirt</option><option value="hoodie">Hoodie</option><option value="name">Name tape</option></NativeSelect></Field>{preset!=='name'?<Field label="Sizes (comma separated)" value={sizes} onChange={(e:any)=>setSizes(e.target.value)}/>:null}<Field label="Colors (optional, comma separated)" value={colors} onChange={(e:any)=>setColors(e.target.value)} placeholder="Black, Gray, Navy"/></div><div className="inline-actions"><Button type="button" variant="secondary" onClick={addPresets}>Add preset options</Button><Button type="button" variant="outline" onClick={()=>setVariants(v=>[...v,{label:'',size:'',color:'',active:true,preorder:!!p.preorder}])} disabled={variants.length>=80}><Plus size={16}/>Custom option</Button></div></div></fieldset>
- <form onSubmit={save}><fieldset disabled={busy}>{variants.map((v,i)=><div className="variant-card" key={v.id||'new'+i}><div className="form-grid"><Field label="Option name" value={v.label} maxLength={100} required onChange={(e:any)=>edit(i,{label:e.target.value})}/><Field label="Size" value={v.size} maxLength={30} onChange={(e:any)=>edit(i,{size:e.target.value})}/><Field label="Color" value={v.color} maxLength={50} onChange={(e:any)=>edit(i,{color:e.target.value})}/></div><div className="variant-controls"><label className="toggle"><input type="checkbox" checked={v.active} onChange={e=>edit(i,{active:e.target.checked})}/>Available option</label><label className="toggle"><input type="checkbox" checked={v.preorder} onChange={e=>edit(i,{preorder:e.target.checked})}/>Preorder</label><span className="fine">{v.id?(v.stock+' on hand · '+money(v.price??p.price)):'New · zero stock'}</span>{v.id?<div className="inline-actions"><Button type="button" variant="outline" size="sm" onClick={()=>open('variantStock',{...v,name:p.name,productId:p.id})}>Adjust count</Button>{!v.preorder?<Button type="button" variant="outline" size="sm" onClick={()=>open('receive',{...p,variantId:v.id,variantLabel:v.label})}>Receive stock</Button>:null}</div>:<Button type="button" variant="ghost" onClick={()=>setVariants(values=>values.filter((_,j)=>j!==i))}>Remove draft option</Button>}</div></div>)}{message?<p className="notice" role="status">{message}</p>:null}{variants.length?<Button type="submit">Save options</Button>:<p className="fine">No options yet. This product currently uses its main stock count.</p>}</fieldset></form>
- {p.variants?.length?<div className="unassigned-stock"><h3>Unassigned stock · {p.stock}</h3><p className="fine">Existing stock stays here until you allocate it to a size or color. Allocation moves units; it does not add a purchase or increase your total stock.</p><Button type="button" variant="secondary" disabled={busy||!p.stock} onClick={()=>open('allocate',p)}>Allocate existing stock</Button></div>:null}</details>
+export default function GearManager({
+  p,
+  data,
+  send,
+  open,
+  busy,
+  onBack,
+}: {
+  p: Row;
+  data: Row;
+  send: (b: Row) => Promise<any>;
+  open: (kind: string, row?: Row) => void;
+  busy: boolean;
+  onBack: () => void;
+}) {
+  const [value, setValue] = useState(() => draft(p)),
+    [dirty, setDirty] = useState(false),
+    [uploading, setUploading] = useState(false),
+    [message, setMessage] = useState("");
+  const [preset, setPreset] = useState("shirt"),
+    [sizes, setSizes] = useState("XS, S, M, L, XL, 2XL, 3XL"),
+    [colors, setColors] = useState("");
+  const [quote, setQuote] = useState(dollars(p.cost)),
+    [margin, setMargin] = useState("30");
+  const newId = useRef(""),
+    snapshot = JSON.stringify(p),
+    saved = useRef(snapshot);
+  useEffect(() => {
+    if (!dirty) {
+      setValue(draft(p));
+      saved.current = snapshot;
+    }
+  }, [snapshot, dirty]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  const edit = (patch: Row) => {
+    setValue((v: Row) => ({ ...v, ...patch }));
+    setDirty(true);
+    setMessage("");
+  };
+  const editOption = (index: number, patch: Row) =>
+    edit({
+      variants: value.variants.map((v: Row, i: number) =>
+        i === index ? { ...v, ...patch } : v,
+      ),
+    });
+  const photos = [value.image, ...value.images].filter(Boolean) as string[];
+  function setPhotos(next: string[]) {
+    edit({ image: next[0] || "", images: next.slice(1) });
+  }
+  async function upload(files: FileList | null) {
+    if (!files) return;
+    if (photos.length + files.length > 9) {
+      setMessage("Use one main image and up to eight detail photos.");
+      return;
+    }
+    setUploading(true);
+    setMessage("");
+    let next = [...photos];
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 5 * 1024 * 1024)
+          throw Error("Each image must be under 5 MB.");
+        const f = new FormData();
+        f.set("image", file);
+        const r = await fetch("/api/product-images", {
+            method: "POST",
+            body: f,
+          }),
+          j = (await r.json()) as Row;
+        if (!r.ok) throw Error(j.error || "Upload failed.");
+        next = [...next, j.image];
+        setPhotos(next);
+      }
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+  function addOptions() {
+    const ss =
+        preset === "name"
+          ? [""]
+          : sizes
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+      cs = colors
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    if (!cs.length) cs.push("");
+    const extra = ss
+      .flatMap((size) =>
+        cs.map((color) => ({
+          label: [
+            preset === "name"
+              ? "Name tape"
+              : preset === "hoodie"
+                ? "Hoodie"
+                : "Shirt",
+            size,
+            color,
+          ]
+            .filter(Boolean)
+            .join(" / "),
+          size,
+          color,
+          priceText: "",
+          stock: 0,
+          active: true,
+          preorder: value.preorder,
+        })),
+      )
+      .filter(
+        (v) =>
+          !value.variants.some(
+            (x: Row) => x.label.toLowerCase() === v.label.toLowerCase(),
+          ),
+      );
+    if (value.variants.length + extra.length > 80) {
+      setMessage("Use up to 80 options per product.");
+      return;
+    }
+    edit({ variants: [...value.variants, ...extra] });
+    if (preset === "name")
+      edit({
+        personalization_label: value.personalization_label || "Last name",
+        personalization_required: true,
+      });
+  }
+  async function save(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setMessage("");
+    const intent = (e.nativeEvent as SubmitEvent).submitter?.getAttribute(
+      "value",
+    );
+    if (!newId.current) newId.current = crypto.randomUUID();
+    const payload = {
+      action: "saveGear",
+      id: p.id || newId.current,
+      create: !p.id,
+      version: value.version || 0,
+      name: value.name,
+      detail: value.detail,
+      description: value.description,
+      image: value.image,
+      images: value.images,
+      price: cents(value.priceText),
+      cost: cents(value.costText),
+      taxBp: cents(value.taxText),
+      active:
+        intent === "publish" ? true : intent === "draft" ? false : value.active,
+      preorder: value.preorder,
+      personalizationLabel: value.personalization_label,
+      personalizationRequired: value.personalization_required,
+      personalizationMax: Number(value.personalization_max),
+      pickupNote: value.pickup_note,
+      stockReason: value.stockReason,
+      ...(!p.id ? { stock: Number(value.stock) } : {}),
+      variants: value.variants.map((v: Row) => ({
+        ...(v.id
+          ? { id: v.id, version: v.version }
+          : { stock: Number(v.stock || 0) }),
+        label: v.label,
+        size: v.size,
+        color: v.color,
+        price: cents(v.priceText),
+        cost: cents(v.costText || ""),
+        active: v.active,
+        preorder: v.preorder,
+      })),
+    };
+    if (new TextEncoder().encode(JSON.stringify(payload)).length > 63000) {
+      setMessage(
+        "This item has too much text for one save. Shorten the description or option labels. Your edits are still here.",
+      );
+      return;
+    }
+    const ok = await send(payload);
+    if (ok) {
+      setDirty(false);
+      setMessage(
+        payload.active
+          ? "Saved and published."
+          : "Draft saved. This item is hidden from members.",
+      );
+    } else
+      setMessage(
+        "Your edits are still here. Review the error above, then retry.",
+      );
+  }
+  const quoteCents = cents(quote),
+    suggestion =
+      quoteCents !== null &&
+      Number.isFinite(quoteCents) &&
+      quoteCents >= 0 &&
+      value.taxText !== ""
+        ? suggestedPrice(
+            quoteCents,
+            Number(margin),
+            Number(value.taxText),
+            false,
+          )
+        : null;
+  const locked = busy || uploading,
+    countLocked = locked || dirty;
+  return (
+    <section className="panel gear-manager">
+      <Button
+        variant="ghost"
+        type="button"
+        disabled={locked}
+        onClick={() => {
+          if (
+            !dirty ||
+            window.confirm("Leave without saving these gear changes?")
+          )
+            onBack();
+        }}
+      >
+        <ArrowLeft size={16} />
+        All inventory
+      </Button>
+      <div className="section-title">
+        <div>
+          <span className="eyebrow">Gear Manager</span>
+          <h2>{p.name || "New gear item"}</h2>
+          <p className="fine">
+            Details, photos, options, and pricing in one place.
+          </p>
+        </div>
+        <span className={"status " + (p.active ? "verified" : "pending")}>
+          {p.archived ? "Archived" : p.active ? "Published" : "Draft / hidden"}
+        </span>
+      </div>
+      {p.archived ? (
+        <p className="notice warning">
+          Restore this item from Inventory to edit it.
+        </p>
+      ) : null}
+      {dirty && saved.current !== snapshot ? (
+        <p className="notice warning" role="alert">
+          This item changed while you were editing. Your draft is intact.{" "}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={locked}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Discard this draft and load the latest saved item?",
+                )
+              ) {
+                setDirty(false);
+                setMessage("Latest item loaded.");
+              }
+            }}
+          >
+            Load latest item
+          </Button>
+        </p>
+      ) : null}
+      <form onSubmit={save}>
+        <fieldset disabled={locked || !!p.archived}>
+          <section className="gear-section">
+            <h3>Product details</h3>
+            <div className="form-grid">
+              <Field
+                label="Product name"
+                value={value.name}
+                maxLength={100}
+                required
+                onChange={(e: any) => edit({ name: e.target.value })}
+              />
+              <Field
+                label="Short description"
+                value={value.detail}
+                maxLength={200}
+                onChange={(e: any) => edit({ detail: e.target.value })}
+              />
+            </div>
+            <Field label="Full description">
+              <textarea
+                rows={4}
+                value={value.description}
+                maxLength={5000}
+                onChange={(e) => edit({ description: e.target.value })}
+                placeholder="Fit, materials, size guide, ordering deadlines…"
+              />
+            </Field>
+          </section>
+          <section className="gear-section">
+            <h3>Photos</h3>
+            <p className="fine">
+              The first photo is used on the shop tile. JPG, PNG, or WebP · 5 MB
+              each.
+            </p>
+            <div className="gallery-editor">
+              {photos.map((src, i) => (
+                <div key={src}>
+                  <img src={src} alt={"Product photo " + (i + 1)} />
+                  <small>{i === 0 ? "Main image" : "Detail photo"}</small>
+                  <div className="inline-actions">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={i === 0}
+                      onClick={() =>
+                        setPhotos([src, ...photos.filter((x) => x !== src)])
+                      }
+                    >
+                      Make main
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={"Remove photo " + (i + 1)}
+                      onClick={() => setPhotos(photos.filter((x) => x !== src))}
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Field label="Upload product photos">
+              <Input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={(e) => {
+                  void upload(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </Field>
+          </section>
+          <section className="gear-section">
+            <h3>Pricing & ordering</h3>
+            <div className="form-grid">
+              <Field
+                label="Base price ($, tax included)"
+                type="number"
+                min="0.01"
+                max="1000"
+                step="0.01"
+                value={value.priceText}
+                onChange={(e: any) => edit({ priceText: e.target.value })}
+              />
+              <Field
+                label="Included sales tax (%)"
+                type="number"
+                min="0"
+                max="30"
+                step="0.01"
+                value={value.taxText}
+                onChange={(e: any) => edit({ taxText: e.target.value })}
+              />
+              <Field
+                label={
+                  value.variants.length
+                    ? "Default for new options"
+                    : "Ordering mode"
+                }
+              >
+                <NativeSelect
+                  value={value.preorder ? "preorder" : "stock"}
+                  onChange={(e) =>
+                    edit({ preorder: e.target.value === "preorder" })
+                  }
+                >
+                  <option value="stock">Stocked item</option>
+                  <option value="preorder">Preorder</option>
+                </NativeSelect>
+              </Field>
+            </div>
+            <Field
+              label="Recorded unit cost ($, optional)"
+              type="number"
+              min="0"
+              max="10000"
+              step="0.01"
+              value={value.costText}
+              onChange={(e: any) => edit({ costText: e.target.value })}
+            />
+            <p className="fine">
+              Cost edits affect future purchases; they do not add an expense or
+              alter past sales. Leave blank if unknown.
+            </p>
+            <p className="fine">
+              Enter 0 for tax only when confirmed exempt. Blank option prices
+              inherit the base price. Price edits apply to future purchases.
+            </p>
+            <details className="workbench">
+              <summary>Explore cost & margin</summary>
+              <div className="gear-calculator">
+                <div className="form-grid">
+                  <Field
+                    label="Estimated unit cost ($)"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={quote}
+                    onChange={(e: any) => setQuote(e.target.value)}
+                  />
+                  <Field
+                    label="Target gross margin (%)"
+                    type="number"
+                    min="0"
+                    max="95"
+                    value={margin}
+                    onChange={(e: any) => setMargin(e.target.value)}
+                  />
+                </div>
+                <p>
+                  Suggested price: <strong>{money(suggestion)}</strong>
+                  {suggestion && quoteCents !== null
+                    ? " · " +
+                      priceMargin(
+                        suggestion,
+                        quoteCents,
+                        Number(value.taxText),
+                      ).margin.toFixed(1) +
+                      "% margin"
+                    : ""}
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!suggestion}
+                  onClick={() => edit({ priceText: dollars(suggestion) })}
+                >
+                  Use as draft base price
+                </Button>
+                <p className="fine">
+                  Estimates do not change recorded costs. Receive purchases
+                  below to record actual restocking costs.
+                </p>
+              </div>
+            </details>
+          </section>
+          <section className="gear-section">
+            <h3>Sizes, colors & options</h3>
+            <p className="fine">
+              For items without options, leave this section empty. Existing
+              options can be hidden while retaining purchase history.
+            </p>
+            <details className="workbench">
+              <summary>Add common options</summary>
+              <div className="gear-calculator">
+                <div className="form-grid">
+                  <Field label="Preset">
+                    <NativeSelect
+                      value={preset}
+                      onChange={(e) => setPreset(e.target.value)}
+                    >
+                      <option value="shirt">Shirt</option>
+                      <option value="hoodie">Hoodie</option>
+                      <option value="name">Name tape</option>
+                    </NativeSelect>
+                  </Field>
+                  {preset !== "name" ? (
+                    <Field
+                      label="Sizes, separated by commas"
+                      value={sizes}
+                      onChange={(e: any) => setSizes(e.target.value)}
+                    />
+                  ) : null}
+                  <Field
+                    label="Colors, separated by commas"
+                    value={colors}
+                    placeholder="Black, Gray, Navy"
+                    onChange={(e: any) => setColors(e.target.value)}
+                  />
+                </div>
+                <Button type="button" variant="secondary" onClick={addOptions}>
+                  Add preset options
+                </Button>
+              </div>
+            </details>
+            <div className="gear-options">
+              {value.variants.map((v: Row, i: number) => (
+                <div className="variant-card" key={v.id || "new" + i}>
+                  <div className="form-grid">
+                    <Field
+                      label="Option name"
+                      required
+                      value={v.label}
+                      maxLength={100}
+                      onChange={(e: any) =>
+                        editOption(i, { label: e.target.value })
+                      }
+                    />
+                    <Field
+                      label="Size"
+                      value={v.size}
+                      maxLength={30}
+                      onChange={(e: any) =>
+                        editOption(i, { size: e.target.value })
+                      }
+                    />
+                    <Field
+                      label="Color"
+                      value={v.color}
+                      maxLength={50}
+                      onChange={(e: any) =>
+                        editOption(i, { color: e.target.value })
+                      }
+                    />
+                    <Field
+                      label="Option price ($)"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max="1000"
+                      value={v.priceText}
+                      placeholder={
+                        value.priceText
+                          ? "Base: " + value.priceText
+                          : "Use base price"
+                      }
+                      onChange={(e: any) =>
+                        editOption(i, { priceText: e.target.value })
+                      }
+                    />
+                    <Field
+                      label="Option unit cost ($, optional)"
+                      type="number"
+                      min="0"
+                      max="10000"
+                      step="0.01"
+                      value={v.costText || ""}
+                      placeholder={
+                        value.costText
+                          ? "Base cost: " + value.costText
+                          : "Use base cost"
+                      }
+                      onChange={(e: any) =>
+                        editOption(i, { costText: e.target.value })
+                      }
+                    />
+                    <Field label="Ordering mode">
+                      <NativeSelect
+                        value={v.preorder ? "preorder" : "stock"}
+                        onChange={(e) =>
+                          editOption(i, {
+                            preorder: e.target.value === "preorder",
+                          })
+                        }
+                      >
+                        <option value="stock">Stocked</option>
+                        <option value="preorder">Preorder</option>
+                      </NativeSelect>
+                    </Field>
+                    {!v.id ? (
+                      <Field
+                        label="Opening count"
+                        type="number"
+                        min="0"
+                        max="100000"
+                        step="1"
+                        value={v.stock || 0}
+                        onChange={(e: any) =>
+                          editOption(i, { stock: e.target.value })
+                        }
+                      />
+                    ) : null}
+                  </div>
+                  <div className="variant-controls">
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={v.active}
+                        onChange={(e) =>
+                          editOption(i, { active: e.target.checked })
+                        }
+                      />
+                      Visible option
+                    </label>
+                    <span className="fine">
+                      {v.priceText
+                        ? money(cents(v.priceText))
+                        : value.priceText
+                          ? money(cents(value.priceText)) + " · base price"
+                          : "Price not set"}
+                    </span>
+                    {!v.id ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() =>
+                          edit({
+                            variants: value.variants.filter(
+                              (_: Row, j: number) => i !== j,
+                            ),
+                          })
+                        }
+                      >
+                        Remove new option
+                      </Button>
+                    ) : (
+                      <span className="fine">
+                        {p.variants?.find((x: Row) => x.id === v.id)?.stock ??
+                          v.stock}{" "}
+                        on hand
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={value.variants.length >= 80}
+              onClick={() =>
+                edit({
+                  variants: [
+                    ...value.variants,
+                    {
+                      label: "",
+                      size: "",
+                      color: "",
+                      priceText: "",
+                      active: true,
+                      preorder: value.preorder,
+                      stock: 0,
+                    },
+                  ],
+                })
+              }
+            >
+              <Plus size={16} />
+              Add custom option
+            </Button>
+            {!p.id && !value.variants.length ? (
+              <Field
+                label="Opening inventory count"
+                type="number"
+                min="0"
+                max="100000"
+                step="1"
+                value={value.stock}
+                onChange={(e: any) => edit({ stock: e.target.value })}
+              />
+            ) : null}
+            {Number(value.stock) > 0 ||
+            value.variants.some((v: Row) => !v.id && Number(v.stock) > 0) ? (
+              <>
+                <Field
+                  label="Opening count reason"
+                  required
+                  value={value.stockReason}
+                  maxLength={200}
+                  placeholder="Counted existing stock on…"
+                  onChange={(e: any) => edit({ stockReason: e.target.value })}
+                />
+                <p className="fine">
+                  Opening counts record existing inventory without recording an
+                  expense. Use Receive stock for a new supplier purchase.
+                </p>
+              </>
+            ) : null}
+          </section>
+          <section className="gear-section">
+            <h3>Personalization & pickup</h3>
+            <div className="form-grid">
+              <Field
+                label="Personalization label (optional)"
+                value={value.personalization_label}
+                maxLength={60}
+                placeholder="Last name"
+                onChange={(e: any) =>
+                  edit({ personalization_label: e.target.value })
+                }
+              />
+              <Field
+                label="Maximum characters"
+                type="number"
+                min="1"
+                max="80"
+                step="1"
+                required
+                value={value.personalization_max}
+                onChange={(e: any) =>
+                  edit({ personalization_max: e.target.value })
+                }
+              />
+            </div>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={value.personalization_required}
+                onChange={(e) =>
+                  edit({ personalization_required: e.target.checked })
+                }
+              />
+              Require personalization
+            </label>
+            <Field label="Pickup instructions">
+              <textarea
+                rows={3}
+                maxLength={500}
+                value={value.pickup_note}
+                onChange={(e) => edit({ pickup_note: e.target.value })}
+              />
+            </Field>
+          </section>
+          <div className="gear-save">
+            <div>
+              <strong>
+                {dirty
+                  ? "Unsaved changes"
+                  : p.id
+                    ? "All changes saved"
+                    : "Start with a draft"}
+              </strong>
+              <p className="fine">
+                Publishing makes the complete item visible to members with gear
+                access.
+              </p>
+            </div>
+            <div className="inline-actions">
+              {p.active ? (
+                <>
+                  <Button type="submit" value="publish">
+                    Save published item
+                  </Button>
+                  <Button type="submit" variant="outline" value="draft">
+                    Save & hide
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button type="submit" variant="outline" value="draft">
+                    Save draft
+                  </Button>
+                  <Button type="submit" value="publish">
+                    {uploading ? "Uploading…" : "Publish item"}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+          {message ? (
+            <p className="notice" role="status">
+              {message}
+            </p>
+          ) : null}
+        </fieldset>
+      </form>
+      {p.id ? (
+        <section className="gear-section">
+          <div className="section-title">
+            <div>
+              <h3>Inventory actions</h3>
+              <p className="fine">
+                {dirty
+                  ? "Save your product changes before receiving or adjusting stock."
+                  : "Record received purchases or correct a physical count with an audit note."}
+              </p>
+            </div>
+            {p.active && !p.archived ? (
+              <Button variant="outline" asChild>
+                <a href={"/products/" + encodeURIComponent(p.id)}>
+                  View published item
+                </a>
+              </Button>
+            ) : null}
+          </div>
+          {(p.variants?.length ? p.variants : [p]).map((v: Row) => (
+            <div className="gear-stock-row" key={v.id}>
+              <div>
+                <strong>{v.label || p.name}</strong>
+                <small>
+                  {v.stock} on hand{v.preorder ? " · Preorder" : ""}
+                  {!v.active ? " · Hidden" : ""}
+                </small>
+              </div>
+              <div className="inline-actions">
+                {!v.preorder ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={countLocked || p.archived}
+                    onClick={() =>
+                      open(
+                        "receive",
+                        v === p
+                          ? p
+                          : { ...p, variantId: v.id, variantLabel: v.label },
+                      )
+                    }
+                  >
+                    Receive stock
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={countLocked || p.archived}
+                  onClick={() =>
+                    open(
+                      v === p ? "gearStock" : "variantStock",
+                      v === p ? p : { ...v, name: p.name, productId: p.id },
+                    )
+                  }
+                >
+                  Adjust count
+                </Button>
+              </div>
+            </div>
+          ))}
+          {p.variants?.length ? (
+            <div className="unassigned-stock">
+              <h4>{p.stock} unassigned units</h4>
+              <p className="fine">
+                Assign these existing units to an option before members can buy
+                them. Allocation preserves the total inventory.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={countLocked || !p.stock || p.archived}
+                onClick={() => open("allocate", p)}
+              >
+                Allocate existing stock
+              </Button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      {p.id ? <Performance p={p} data={data} /> : null}
+    </section>
+  );
 }
