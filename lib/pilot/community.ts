@@ -16,6 +16,7 @@ import {
 } from "./core";
 import { accessFor, canShop } from "./access";
 import { cursorFor, cursorValue } from "./history";
+import { memberFlairProfiles } from "./rewards";
 export const COMMUNITY_ADMIN_ACTIONS = [
   "requestDecision",
   "removePost",
@@ -97,8 +98,9 @@ export async function communityPage(db: DB, m: Row, q: Row, admin = false) {
       shop,
       ...tail.values,
     );
+    const profiles = await memberFlairProfiles(db, found.slice(0, 30).map((r) => r.member_id));
     return {
-      ...page(found),
+      ...page(found.map((r) => ({...r, author_profile: profiles[r.member_id] || null}))),
       postingEnabled: !!m.posting_enabled,
       memberId: m.id,
       admin,

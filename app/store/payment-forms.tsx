@@ -3,7 +3,98 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import {
+  cashAppUrl,
+  clearPaymentDraft,
+  paymentDraftId,
+  paymentReference,
+} from "@/lib/cashapp";
 import { Field, money, type Row } from "./shared";
+
+export function CashAppHandoff({
+  cashtag,
+  amount,
+  reference,
+}: {
+  cashtag: string;
+  amount: number;
+  reference: string;
+}) {
+  const [message, setMessage] = useState(""),
+    [copying, setCopying] = useState(false),
+    [manual, setManual] = useState(false),
+    url = cashAppUrl(cashtag, amount);
+  useEffect(() => {
+    setMessage("");
+    setManual(false);
+  }, [reference, amount, cashtag]);
+  if (!url || !reference)
+    return (
+      <p className="notice">
+        Cash App is not available for this amount. Choose another payment method.
+      </p>
+    );
+  async function open() {
+    if (copying || !url) return;
+    setCopying(true);
+    try {
+      // Copy while this document still has focus. Browsers that block the
+      // subsequent popup get a normal link, with the reference already copied.
+      await navigator.clipboard.writeText(reference);
+      let tab: Window | null = null;
+      try {
+        tab = window.open(url, "_blank");
+        if (tab) tab.opener = null;
+      } catch {}
+      setMessage(
+        tab
+          ? "Reference copied. Paste it into the Cash App payment note, then return here."
+          : "Reference copied. Open Cash App below and paste it into the payment note.",
+      );
+      setManual(!tab);
+    } catch {
+      setMessage(
+        "Your browser could not copy the reference. Select and copy it below, then open Cash App and paste it into the payment note.",
+      );
+      setManual(true);
+    } finally {
+      setCopying(false);
+    }
+  }
+  return (
+    <div className="cashapp-handoff">
+      <Button
+        type="button"
+        className="full h-auto whitespace-normal py-3 text-center"
+        disabled={copying}
+        onClick={() => void open()}
+      >
+        {copying ? "Copying reference…" : "Copy reference & open Cash App"}
+      </Button>
+      <p className="fine">
+        Opens {money(amount)} in Cash App. Paste the copied reference into its
+        payment note. Opening Cash App does not record or confirm a payment.
+      </p>
+      {message ? <p className="notice" role="status">{message}</p> : null}
+      {manual ? (
+        <>
+          <Field label="Payment reference">
+            <Input
+              readOnly
+              value={reference}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          </Field>
+          <Button asChild variant="secondary" className="full">
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              Open Cash App · {money(amount)}
+            </a>
+          </Button>
+        </>
+      ) : null}
+    </div>
+  );
+}
 export function PaymentConfirmation({
   payment,
   send,
@@ -86,6 +177,7 @@ export function PaymentConfirmation({
                 : "Purchase payment"}
           </span>
           <small>{money(p.amount)} reported / remaining</small>
+          <small>Reference: {payment.order_code || p.order_code || paymentReference(p.id)}</small>
         </div>
         <Field label="Amount actually received ($)">
           <Input
@@ -169,6 +261,11 @@ export function TabPayment({
   creditFirst?: boolean;
 }) {
   const [method, setMethod] = useState(creditFirst ? "credit" : "cash");
+  const draftKey = "supply-tab-payment:" + member.id,
+    [draftId, setDraftId] = useState("");
+  useEffect(() => {
+    if (method === "cashapp") setDraftId(paymentDraftId(draftKey));
+  }, [method, draftKey]);
   const limit =
     method === "credit"
       ? Math.min(member.debt, member.credit)
@@ -188,19 +285,22 @@ export function TabPayment({
       (method !== "cashapp" || settings.cashtag);
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        if (valid)
-          void send(
+        if (valid && (method !== "cashapp" || draftId)) {
+          const result = await send(
             method === "credit"
               ? { action: "creditSettlement", amount: cents }
               : {
                   action: "payment",
+                  ...(method === "cashapp" ? { id: draftId } : {}),
                   purpose: "settlement",
                   method,
                   amount: cents,
                 },
           );
+          if (result) clearPaymentDraft(draftKey, draftId);
+        }
       }}
     >
       <fieldset disabled={busy}>
@@ -255,20 +355,17 @@ export function TabPayment({
         {method === "cash" ? (
           <p className="fine">{settings.cash_instructions}</p>
         ) : null}
-        {method === "cashapp" ? (
-          <a
-            className="text-link"
-            href={
-              "https://cash.app/$" +
-              settings.cashtag +
-              "/" +
-              (cents / 100).toFixed(2)
-            }
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Open Cash App · {money(cents)}
-          </a>
+        {method === "cashapp" && valid && draftId ? (
+          <>
+            <p className="fine">
+              Payment reference: <strong>{paymentReference(draftId)}</strong>
+            </p>
+            <CashAppHandoff
+              cashtag={settings.cashtag}
+              amount={cents}
+              reference={paymentReference(draftId)}
+            />
+          </>
         ) : null}
         {pendingAmount > 0 ? (
           <p className="fine">
@@ -277,7 +374,10 @@ export function TabPayment({
             administrator can confirm the excess as credit.
           </p>
         ) : null}
-        <Button type="submit" disabled={!valid}>
+        <Button
+          type="submit"
+          disabled={!valid || (method === "cashapp" && !draftId)}
+        >
           {method === "credit"
             ? "Apply " + money(cents) + " credit"
             : "Report " + money(cents) + " paid"}

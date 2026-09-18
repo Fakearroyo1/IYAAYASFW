@@ -136,6 +136,10 @@ for (let i = 0; i < 2; i++)
     "GUEST-SCHEMA.sql",
     "AUTOPILOT-SCHEMA.sql",
     "REWARDS-SCHEMA.sql",
+    "EARNING-SCHEMA.sql",
+    "REDEMPTION-SCHEMA.sql",
+    "PROFILE-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql",
   ])
     sqlite.exec(fs.readFileSync(f, "utf8"));
 let checks = 0;
@@ -580,7 +584,7 @@ function sale(id, memberId = "member", status = "tab", at = Date.now()) {
 }
 sale("new-a");
 sale("new-b");
-ok((await rewardTotal(db, "member")) === 5, "first daily purchase only");
+ok((await rewardTotal(db, "member")) === 0, "Unpaid purchases do not earn the retired daily bonus");
 run("UPDATE orders SET status='void' WHERE id='new-a'");
 ok(
   (await rewardTotal(db, "member")) === 0,
@@ -635,7 +639,7 @@ await bad(
 );
 const profileBody = body({
   action: "profileSave",
-  version: -1,
+  version: get("SELECT version FROM member_profiles WHERE member_id='member'").version,
   alias: "Test Crew",
   bio: "Supporting the unit",
   accent: "blue",
@@ -646,13 +650,14 @@ const profileBody = body({
 });
 await mutateRewards(db, member, profileBody);
 ok(
-  !(await rewardsPage(db, other, { kind: "rewards" })).board.length,
-  "pending profile invisible",
+  (await rewardsPage(db, other, { kind: "rewards" })).board.some(p => p.alias === "member") &&
+    !(await rewardsPage(db, other, { kind: "rewards" })).board.some(p => p.alias === "Test Crew"),
+  "pending changes preserve approved identity without publishing new content",
 );
 await reward({
   action: "profileModerate",
   memberId: "member",
-  version: 0,
+  version: get("SELECT version FROM member_profiles WHERE member_id='member'").version,
   state: "approved",
   reason: "Reviewed alias and bio",
 });
@@ -667,7 +672,7 @@ ok(
 await reward({
   action: "profileModerate",
   memberId: "member",
-  version: 1,
+  version: get("SELECT version FROM member_profiles WHERE member_id='member'").version,
   state: "hidden",
   reason: "Temporary moderation review",
 });
@@ -866,7 +871,7 @@ await bad(
       other,
       body({
         action: "profileSave",
-        version: -1,
+        version: get("SELECT version FROM member_profiles WHERE member_id='other'").version,
         alias: "No unlock",
         bio: "Tier restricted",
         accent: "blue",
@@ -881,7 +886,7 @@ await bad(
 await reward({
   action: "profileModerate",
   memberId: "member",
-  version: 2,
+  version: get("SELECT version FROM member_profiles WHERE member_id='member'").version,
   state: "approved",
   reason: "Restoring a reviewed profile",
 });
@@ -911,7 +916,7 @@ await mutateRewards(
   member,
   body({
     action: "profileSave",
-    version: 3,
+    version: get("SELECT version FROM member_profiles WHERE member_id='member'").version,
     alias: "Test Crew",
     bio: "Supporting the unit",
     accent: "blue",
@@ -1090,8 +1095,9 @@ await guest({
 });
 const psid = crypto.randomUUID();
 run(
-  "INSERT INTO guest_sessions(id,campaign_id,code_version,expires_at,created_at) VALUES(?,?,1,?,?)",
+  "INSERT INTO guest_sessions(id,campaign_id,code_version,expires_at,created_at) VALUES(?,?,(SELECT code_version FROM guest_campaigns WHERE id=?),?,?)",
   psid,
+  pc.id,
   pc.id,
   Date.now() + 3600000,
   Date.now(),
@@ -1183,7 +1189,7 @@ if (process.env.ROADMAP_FIXTURE_FILE) {
     other,
     body({
       action: "profileSave",
-      version: -1,
+      version: get("SELECT version FROM member_profiles WHERE member_id='other'").version,
       alias: "Rivera",
       bio: "Happy to help the unit",
       accent: "green",
@@ -1196,7 +1202,7 @@ if (process.env.ROADMAP_FIXTURE_FILE) {
   await reward({
     action: "profileModerate",
     memberId: "other",
-    version: 0,
+    version: get("SELECT version FROM member_profiles WHERE member_id='other'").version,
     state: "approved",
     reason: "Sample profile reviewed",
   });

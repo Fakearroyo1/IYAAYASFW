@@ -13,6 +13,9 @@ import {
   localDate,
 } from "./roadmap-shared";
 import { roadmapRead } from "./operations-action";
+import { RewardsShop, SpendingSettings } from "./rewards-shop";
+import { MemberProfileCard } from "./member-flair";
+import styles from "./rewards-shop.module.css";
 const accents = ["blue", "indigo", "green", "orange", "rose", "slate"],
   symbols = ["star", "shield", "hands", "compass", "medal", "flag"];
 const icons: Row = {
@@ -38,8 +41,9 @@ function Badge({ badge: b }: { badge: Row }) {
     </span>
   );
 }
-export default function Rewards({ admin = false }: { admin?: boolean }) {
-  const [tab, setTab] = useState(admin ? "members" : "profile"),
+export default function Rewards({ admin = false, initialProfileId = "", initialReportId = "" }: { admin?: boolean; initialProfileId?: string; initialReportId?: string }) {
+  const [moderationTarget, setModerationTarget] = useState({profileId: initialProfileId, reportId: initialReportId}),
+    [tab, setTab] = useState(admin ? initialProfileId || initialReportId ? "moderation" : "members" : "ledger"),
     [memberId, setMemberId] = useState(""),
     [season, setSeason] = useState(""),
     [offset, setOffset] = useState(0),
@@ -48,6 +52,8 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
   const state = useRoadmap({
       kind: "rewards",
       ...(admin ? { admin: "true" } : {}),
+      ...(admin && moderationTarget.profileId ? {profileId: moderationTarget.profileId} : {}),
+      ...(admin && moderationTarget.reportId ? {reportId: moderationTarget.reportId} : {}),
       ...(memberId ? { memberId } : {}),
       ...(season ? { season } : {}),
       offset: String(offset),
@@ -80,6 +86,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
             {(admin
               ? [
                   ["members", "Member recognition"],
+                  ["shop", "Rewards & raffles"],
                   ["badges", "Badge library"],
                   ["moderation", "Profile moderation"],
                   ["rules", "Rules & tiers"],
@@ -87,8 +94,9 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                   ["board", "Support Board"],
                 ]
               : [
-                  ["profile", "My profile"],
                   ["ledger", "My Murley Bucks"],
+                  ["shop", "Use Murley Bucks"],
+                  ["profile", "My profile"],
                   ["board", "Support Board"],
                 ]
             ).map(([id, title]) => (
@@ -153,7 +161,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                       },
                       reasonField,
                     ]}
-                    busy={a.busy}
+                    busy={a.busy || !!a.pending}
                     submit={(v) =>
                       a.send({
                         action: "rewardAward",
@@ -174,17 +182,17 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                 <section className="panel road-stack">
                   <ActionForm
                     key={d.memberId + ":freeze:" + d.control.version}
-                    title="Automatic rewards"
+                    title="Reward account controls"
                     initial={{ frozen: !!d.control.frozen, reason: "" }}
                     fields={[
                       {
                         key: "frozen",
-                        label: "Freeze automatic and rule-based awards",
+                        label: "Pause automatic awards and reward redemption",
                         type: "checkbox",
                       },
                       reasonField,
                     ]}
-                    busy={a.busy}
+                    busy={a.busy || !!a.pending}
                     submit={(v) =>
                       a.send({
                         action: "rewardFreeze",
@@ -199,7 +207,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                     initial={{ reason: "" }}
                     fields={[reasonField]}
                     label="Recalculate and repair void reversals"
-                    busy={a.busy}
+                    busy={a.busy || !!a.pending}
                     submit={(v) =>
                       a.send({
                         action: "rewardRepair",
@@ -219,7 +227,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                 <ActionForm
                   title="Issue a badge"
                   initial={{
-                    badgeId: d.definitions.find((x: Row) => x.active)?.id || "",
+                    badgeId: d.definitions.find((x: Row) => x.active && !x.id.startsWith("raffle-winner:"))?.id || "",
                     expires: "",
                     reason: "",
                   }}
@@ -228,7 +236,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                       key: "badgeId",
                       label: "Badge",
                       options: d.definitions
-                        .filter((x: Row) => x.active)
+                        .filter((x: Row) => x.active && !x.id.startsWith("raffle-winner:"))
                         .map((x: Row) => [x.id, x.name]),
                     },
                     {
@@ -240,7 +248,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                     reasonField,
                   ]}
                   label="Issue badge"
-                  busy={a.busy}
+                  busy={a.busy || !!a.pending}
                   submit={(v) =>
                     a.send({
                       action: "badgeIssue",
@@ -271,7 +279,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                         initial={{ reason: "" }}
                         fields={[reasonField]}
                         label="Revoke"
-                        busy={a.busy}
+                        busy={a.busy || !!a.pending}
                         submit={(v) =>
                           a.send({ action: "badgeRevoke", id: b.id, ...v })
                         }
@@ -291,9 +299,11 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
               />
             </>
           ) : null}
+          {tab === "shop" ? <RewardsShop admin={admin} onChange={state.refresh} /> : null}
           {!admin && tab === "profile" ? (
             <>
               <Balance data={d} />
+              {d.ownProfile ? <MemberProfileCard profile={d.ownProfile} /> : null}
               <ProfileEditor
                 key={
                   (d.profile?.version ?? -1) +
@@ -327,10 +337,13 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                 offset={offset}
                 setOffset={setOffset}
               />
-              <section className="panel">
+              <Button variant="secondary" onClick={() => setTab("shop")}>Explore rewards</Button>
+              <section className="panel road-stack">
                 <h2>Ways to earn Murley Bucks</h2>
+                {d.earning ? <p><strong>Paid purchases:</strong> 1 Murley Buck for every ${(d.earning.settings.rateCents / 100).toFixed(2)} of eligible merchandise. Fractional amounts carry forward. Tax, shipping, and purchases funded with reward credit are excluded.</p> : null}
+                {d.earning ? <p className="fine">{d.earning.settings.currentWeekCapPoints ? `Spending earnings are limited to ${d.earning.settings.currentWeekCapPoints} Murley Bucks for your current earning week.` : "There is currently no weekly cap on your spending earnings."} Community and manual recognition have their own rules.</p> : null}
                 {d.rules
-                  .filter((r: Row) => r.enabled)
+                  .filter((r: Row) => r.enabled && r.id !== "purchase" && r.id !== "spending")
                   .map((r: Row) => (
                     <p key={r.id}>
                       {r.label}: {r.points} Murley Bucks · up to {r.period_cap}{" "}
@@ -340,7 +353,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                 <p className="fine">
                   Rewards began {date(d.settings.starts_at)}. Daily and weekly
                   windows use UTC; weekly windows are fixed seven-day periods.
-                  No cash value and no effect on your tab or credit.
+                  Murley Bucks can be redeemed for the rewards your admins offer. They are separate from your account credit until you choose a credit reward.
                 </p>
               </section>
             </>
@@ -350,13 +363,13 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
           ) : null}
           {admin && tab === "rules" ? (
             <>
+              {d.earning ? <SpendingSettings earning={d.earning} action={a} /> : null}
               <section className="panel">
-                <h2>Earning rules</h2>
+                <h2>Participation rules</h2>
                 <p className="fine">
-                  Capped participation rewards; purchase value does not
-                  determine points. New rules affect future qualifying activity.
+                  These awards are in addition to purchase earnings. New rules affect future qualifying activity.
                 </p>
-                {d.rules.map((r: Row) => (
+                {d.rules.filter((r: Row) => r.id !== "purchase" && r.id !== "spending").map((r: Row) => (
                   <ActionForm
                     key={r.id + ":" + r.version}
                     title={r.label}
@@ -395,9 +408,9 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                         label: "Rule enabled",
                         type: "checkbox",
                       },
-                      reasonField,
+                      { ...reasonField, label: "Note (optional)", optional: true },
                     ]}
-                    busy={a.busy}
+                    busy={a.busy || !!a.pending}
                     submit={(v) =>
                       a.send({
                         action: "rewardRule",
@@ -417,10 +430,9 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
           ) : null}
           {admin && tab === "moderation" ? (
             <>
+              {moderationTarget.profileId || moderationTarget.reportId ? <div className="notice"><p>Showing the profile {moderationTarget.reportId ? "and report " : ""}selected in Needs attention.</p><Button variant="secondary" onClick={() => setModerationTarget({profileId:"",reportId:""})}>Show all profile reviews</Button></div> : null}
               <p className="notice">
-                Profile content is reviewed before appearing to members. Hiding
-                a profile immediately removes it from the Support Board without
-                removing its reviews or requests.
+                New profile content is reviewed while the last approved version stays visible. Hiding a profile removes it from member views and the Support Board without deleting its reviews or requests.
               </p>
               {d.profiles.map((p: Row) => (
                 <article className="panel road-stack" key={p.member_id}>
@@ -442,58 +454,26 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                       />
                     ))}
                   </div>
-                  <ActionForm
-                    key={p.version}
-                    title="Review profile"
-                    initial={{
-                      state: p.moderation === "hidden" ? "approved" : "hidden",
-                      removeImages: false,
-                      reason: "",
-                    }}
-                    fields={[
-                      {
-                        key: "state",
-                        label: "Visibility decision",
-                        options: [
-                          ["approved", "Approve / restore"],
-                          ["hidden", "Hide immediately"],
-                        ],
-                      },
-                      {
-                        key: "removeImages",
-                        label: "Remove current profile images",
-                        type: "checkbox",
-                      },
-                      reasonField,
-                    ]}
-                    busy={a.busy}
-                    submit={(v) =>
-                      a.send({
-                        action: "profileModerate",
-                        memberId: p.member_id,
-                        version: p.version,
-                        ...v,
-                      })
-                    }
-                  />
+                  <ProfileModeration key={p.member_id + ":" + p.version} profile={p} action={a} />
                 </article>
               ))}
+              {(moderationTarget.profileId || moderationTarget.reportId) && !d.profiles.length ? <p className="notice">The selected profile is no longer available.</p> : null}
               <section className="panel">
-                <h2>Open reports</h2>
+                <h2>{moderationTarget.reportId ? "Selected report" : "Open reports"}</h2>
                 {d.reports.map((r: Row) => (
                   <div className="road-item" key={r.id}>
                     <h3>{r.alias}</h3>
                     <p>{r.reason}</p>
-                    <ActionForm
+                    {r.status === "open" ? <ActionForm
                       title="Resolve report"
                       initial={{ reason: "" }}
                       fields={[reasonField]}
                       label="Resolve"
-                      busy={a.busy}
+                      busy={a.busy || !!a.pending}
                       submit={(v) =>
                         a.send({ action: "profileResolve", id: r.id, ...v })
                       }
-                    />
+                    /> : <p className="fine">This report is resolved. {r.resolution}</p>}
                   </div>
                 ))}
               </section>
@@ -514,7 +494,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                   { key: "starts", label: "Starts", type: "datetime-local" },
                   { key: "ends", label: "Ends", type: "datetime-local" },
                 ]}
-                busy={a.busy}
+                busy={a.busy || !!a.pending}
                 submit={(v) =>
                   a.send({
                     action: "seasonCreate",
@@ -538,7 +518,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                       initial={{ reason: "" }}
                       fields={[reasonField]}
                       label="Archive season"
-                      busy={a.busy}
+                      busy={a.busy || !!a.pending}
                       submit={(v) =>
                         a.send({
                           action: "seasonArchive",
@@ -561,8 +541,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
             <section className="panel road-stack">
               <h2>Support Board</h2>
               <p className="fine">
-                Opt-in recognition for helping the unit. Equal Murley Bucks
-                share a rank. No purchasing or balance information is shown.
+                Earned recognition for helping the unit. Spending Murley Bucks does not lower standings. Equal earned totals share a rank; account balances and purchases stay private. You can leave the board in My profile.
               </p>
               <SelectField
                 label="Season"
@@ -595,7 +574,7 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
                   </span>
                   <span>
                     {p.points.toLocaleString()}
-                    <small>Murley Bucks</small>
+                    <small>earned Murley Bucks</small>
                   </span>
                 </button>
               ))}
@@ -616,21 +595,28 @@ export default function Rewards({ admin = false }: { admin?: boolean }) {
     </section>
   );
 }
-function Balance({ data: d }: { data: Row }) {
+export function Balance({ data: d }: { data: Row }) {
   return (
     <section className="recognition-summary">
-      <span>Murley Bucks</span>
-      <strong>{d.total.toLocaleString()}</strong>
+      <span>Historical earned Murley Bucks</span>
+      <strong>{Number(d.wallet?.earned ?? d.total).toLocaleString()}</strong>
+      {d.wallet ? <dl className={styles.metrics}>
+        <div><dt>Available to spend</dt><dd>{Number(d.wallet.available).toLocaleString()}</dd></div>
+        <div><dt>Spent on rewards</dt><dd>{Number(d.wallet.spent).toLocaleString()}</dd></div>
+        <div><dt>Pending payment</dt><dd>{Number(d.earning?.pendingPoints || 0).toLocaleString()}</dd></div>
+      </dl> : null}
+      {d.earning?.pendingPoints > 0 ? <p className="fine">Pending earnings become available after eligible purchases are paid and confirmed, subject to earning rules.</p> : null}
+      {d.earning?.remainderCents > 0 ? <p className="fine">${(d.earning.remainderCents / 100).toFixed(2)} in paid eligible spending is carried toward your next Murley Buck.</p> : null}
       <p>
         {d.tier.name} · {d.tier.slots} display badge{" "}
         {d.tier.slots === 1 ? "slot" : "slots"}
       </p>
       <small>
-        Recognition points. Separate from account credit and purchases.
+        Earned recognition determines profile unlocks and Support Board standings. Redeeming rewards never reduces this total.
       </small>
       {d.control.frozen ? (
         <p className="notice warning">
-          Automatic rewards are currently paused for this account.
+          Automatic rewards and reward redemption are currently paused for this account. Contact an administrator for help.
         </p>
       ) : null}
     </section>
@@ -654,7 +640,8 @@ function Ledger({
   );
   return (
     <section className="panel road-stack">
-      <h2>Murley Bucks history</h2>
+      <h2>Earned Murley Bucks history</h2>
+      <p className="fine">Awards and earning adjustments appear here. Redeemed rewards have their own history under Use Murley Bucks.</p>
       {d.ledger.map((l: Row) => (
         <div className="road-item" key={l.id}>
           <div className="section-title">
@@ -669,13 +656,14 @@ function Ledger({
             {l.rule_id.replaceAll("_", " ")}
             {l.reverses ? " · reversal" : ""}
           </p>
-          {admin && !l.reverses && !reversed.has(l.id) ? (
+          {admin && l.rule_id === "spending" ? <p className="fine">Purchase earnings are corrected through the original transaction or refund so the financial and reward records stay linked.</p> : null}
+          {admin && l.rule_id !== "spending" && !l.reverses && !reversed.has(l.id) ? (
             <ActionForm
               title="Reverse this entry"
               initial={{ reason: "" }}
               fields={[reasonField]}
               label="Record reversal"
-              busy={a.busy}
+              busy={a.busy || !!a.pending}
               submit={(v) =>
                 a.send({ action: "rewardReverse", id: l.id, ...v })
               }
@@ -742,7 +730,7 @@ async function uploadImage(file: File, kind: string) {
     bitmap.close();
   }
 }
-function ProfileEditor({
+export function ProfileEditor({
   data: d,
   action: a,
 }: {
@@ -761,7 +749,7 @@ function ProfileEditor({
       avatarId: t.avatar ? p.avatar_id : null,
       bannerId: t.banner ? p.banner_id : null,
       badges: (p.display_badges ? JSON.parse(p.display_badges) : [])
-        .filter((id: string) => d.badges.some((b: Row) => b.award_id === id))
+        .filter((id: string) => d.badges.some((b: Row) => b.award_id === id && !b.automatic))
         .slice(0, t.slots),
     }),
     [error, setError] = useState(""),
@@ -776,10 +764,10 @@ function ProfileEditor({
     >
       <h2>Your member profile</h2>
       <p className="fine">
-        Content changes go to the admin review queue. Visibility and board
-        participation are your choice.
+        Your profile and Support Board participation are enabled by default. You can turn either off below. Edits are reviewed while your last approved appearance remains visible.
       </p>
-      {p.moderation ? <p className="status">{p.moderation}</p> : null}
+      {d.ownProfile?.memberName ? <p className="fine">Actual name: <strong>{d.ownProfile.memberName}</strong>. Signed-in members can see this name when they open your profile.</p> : null}
+      {p.moderation ? <p className="status">{p.moderation === "pending" ? "Changes awaiting review" : p.moderation}</p> : null}
       <Field
         label="Display name / call sign"
         value={v.alias}
@@ -860,11 +848,12 @@ function ProfileEditor({
             ) : null}
           </div>
         ))}
+      {d.badges.some((b: Row) => b.automatic) ? <div className="road-stack"><h3>Season recognition</h3><div className="badge-shelf">{d.badges.filter((b: Row) => b.automatic).map((b: Row) => <Badge key={b.award_id} badge={b} />)}</div><p className="fine">Season winner badges are displayed automatically until the season ends and do not use a badge slot.</p></div> : null}
       <h3>
         Displayed badges ({v.badges.length}/{t.slots})
       </h3>
       <div className="badge-shelf">
-        {d.badges.map((b: Row) => (
+        {d.badges.filter((b: Row) => !b.automatic).map((b: Row) => (
           <label className="badge-choice" key={b.award_id}>
             <input
               type="checkbox"
@@ -900,7 +889,7 @@ function ProfileEditor({
         }
       />
       {error ? <p className="notice error">{error}</p> : null}
-      <Button type="submit" disabled={a.busy || uploading}>
+      <Button type="submit" disabled={a.busy || !!a.pending || uploading}>
         {uploading ? "Processing image…" : "Save profile"}
       </Button>
       <details>
@@ -955,6 +944,7 @@ function PublicProfile({
           </span>
         )}
         <h2>{p.alias}</h2>
+        {p.memberName ? <p className="fine">{p.memberName}</p> : null}
         <p className="fine">{p.tier}</p>
         <p>{p.bio}</p>
         <div className="badge-shelf">
@@ -969,7 +959,7 @@ function PublicProfile({
             initial={{ reason: "" }}
             fields={[reasonField]}
             label="Report profile"
-            busy={a.busy}
+            busy={a.busy || !!a.pending}
             submit={(v) => a.send({ action: "profileReport", id: p.id, ...v })}
           />
         </details>
@@ -1013,9 +1003,9 @@ function BadgeLibrary({
             <p className="fine">
               {b.active ? "Available to issue" : "Retired"}
             </p>
-            <Button variant="secondary" onClick={() => setEditing(b)}>
+            {b.id.startsWith("raffle-winner:") ? <p className="fine">Automatically managed by raffle results. This distinction expires with its season.</p> : <Button variant="secondary" onClick={() => setEditing(b)}>
               Edit badge
-            </Button>
+            </Button>}
           </article>
         ))}
       </div>
@@ -1042,9 +1032,9 @@ function BadgeLibrary({
                 options: symbols.map((x) => [x, x]),
               },
               { key: "active", label: "Available to issue", type: "checkbox" },
-              reasonField,
+              { ...reasonField, label: "Note (optional)", optional: true },
             ]}
-            busy={a.busy}
+            busy={a.busy || !!a.pending}
             submit={async (v) => {
               const r = await a.send({ action: "badgeSave", ...v });
               if (r) setEditing(null);
@@ -1194,16 +1184,30 @@ function TierEditor({
         />
       ))}
       <Field
-        label="Reason for this configuration change"
+        label="Configuration note (optional)"
         value={reason}
-        required
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           setReason(e.target.value)
         }
       />
-      <Button type="submit" disabled={a.busy}>
+      <Button type="submit" disabled={a.busy || !!a.pending}>
         Save tiers and titles
       </Button>
     </form>
   );
+}
+
+function ProfileModeration({ profile: p, action: a }: { profile: Row; action: ReturnType<typeof useRoadmap>["action"] }) {
+  const [state, setState] = useState("approved"), [removeImages, setRemoveImages] = useState(false), [reason, setReason] = useState("");
+  const reasonRequired = state === "hidden" || removeImages;
+  return <form className="road-form" onSubmit={(e) => {
+    e.preventDefault();
+    void a.send({ action: "profileModerate", memberId: p.member_id, version: p.version, state, removeImages, reason });
+  }}>
+    <h3>Review profile</h3>
+    <SelectField label="Decision" value={state} onChange={setState} options={[["approved", "Approve / restore"], ["hidden", "Hide from member views"]]} />
+    <CheckField label="Remove current profile images" checked={removeImages} onChange={setRemoveImages} />
+    {reasonRequired ? <Field label="Moderation reason" required minLength={5} value={reason} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReason(e.target.value)} /> : null}
+    <Button disabled={a.busy || !!a.pending}>{state === "approved" ? "Approve profile" : "Hide profile"}</Button>
+  </form>;
 }

@@ -41,7 +41,7 @@ export async function mutateInitiative(db:DB,m:Row,b:Row,tokenHash?:string){
   if(!r)fail('Choose an available item request.',404);
   if(r.status==='denied')fail('Reopen the request before considering a product trial.');
   const kind=str(b.kind,20);if(!['trial','interest'].includes(kind)||kind==='interest'&&r.shop!=='gear')fail('Interest checks are for gear. Choose a snack trial or gear interest check.');
-  const end=int(b.endsAt,now+3600000,now+180*86400000),note=noteText(b.note),category=r.shop==='gear'?'Gear':str(b.category||'Snacks',20);
+  const end=int(b.endsAt,now+3600000,now+180*86400000),note=noteText(b.note || "We are reviewing demand for this item.",1000,0),category=r.shop==='gear'?'Gear':str(b.category||'Snacks',20);
   if(!['Gear','Drinks','Snacks','Frozen'].includes(category)||r.shop==='snacks'&&category==='Gear')fail('Choose the correct product category.');
   const productId='initiative-'+op.id;
   await op.commit([guard(db,'EXISTS(SELECT 1 FROM item_requests WHERE id=? AND version=? AND removed=0)',r.id,int(b.version)),
@@ -71,7 +71,7 @@ export async function mutateInitiative(db:DB,m:Row,b:Row,tokenHash?:string){
  }
  if(action==='initiativeSchedule'){
   if(!['draft','open'].includes(i.state))fail('Only an active or draft activity can be rescheduled.');
-  const end=int(b.endsAt,now+3600000,now+180*86400000),note=noteText(b.note);
+  const end=int(b.endsAt,now+3600000,now+180*86400000),note=noteText(b.note || "",1000,0);
   await op.commit([g,stmt(db,'UPDATE product_initiatives SET ends_at=?,version=version+1,updated_at=? WHERE id=?',end,now,i.id),audit(db,m.id,'initiative_rescheduled',i.id,{endsAt:end,note})]);return {ok:true};
  }
  if(action==='initiativeOpen'){

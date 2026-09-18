@@ -283,7 +283,7 @@ export default function InventoryAutopilot() {
                             type: "number",
                             min: 0,
                           },
-                          reasonField,
+                          { ...reasonField, label: "Planning note (optional)", optional: true },
                         ]}
                         busy={a.busy}
                         submit={(v) =>
@@ -702,7 +702,7 @@ export function MonthClose() {
                     key: "cashappReference",
                     label: "Cash App reconciliation reference / note",
                   },
-                  reasonField,
+                  { ...reasonField, label: "Closing note (optional)", optional: true },
                 ]}
                 label="Close month and save immutable report"
                 busy={a.busy || !!d.pending}

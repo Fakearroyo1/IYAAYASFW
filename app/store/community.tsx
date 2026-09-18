@@ -20,6 +20,7 @@ import {
 import { Field, date, type Row } from "./shared";
 import ProductInitiatives, { CreateInitiative } from "./initiatives";
 import { useCommunityAction } from "./community-action";
+import { MemberFlair } from "./member-flair";
 export function ActionFeedback({
   action,
 }: {
@@ -220,9 +221,10 @@ export default function CommunityBoard({
                     : "Not planned"}
               </span>
             </div>
-            <p className="community-author">
-              {r.author_name} · {date(r.created_at)}
-            </p>
+            <div className="community-author">
+              <MemberFlair profile={r.author_profile} fallbackName={r.author_name} />
+              <span className="fine">{date(r.created_at)}</span>
+            </div>
             {r.body ? <p className="community-body">{r.body}</p> : null}
             {r.decision_note ? (
               <div className="decision-note">

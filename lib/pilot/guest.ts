@@ -12,7 +12,10 @@ import {
   uid,
 } from "./core";
 import { operation, noteText } from "./operation";
-import { codeHash, randomCode } from "../guest/common";
+import { codeHash, campaignCode } from "../guest/common";
+
+const routineNote = (value: unknown, fallback: string) =>
+  value == null || (typeof value === "string" && !value.trim()) ? fallback : noteText(value, 1000, 1);
 
 export const GUEST_ACTIONS = [
   "guestSettings",
@@ -37,6 +40,21 @@ export async function guestAdmin(db: DB, q: Row) {
     db,
     "SELECT * FROM guest_campaign_items ORDER BY campaign_id,product_id,option_id",
   );
+  // Use the same product, delivery, stock, and campaign-limit rules as guest
+  // checkout. A campaign switch alone does not mean shoppers can order.
+  const availability = await rows(db, `SELECT campaign_id,COUNT(*) configured_options,
+    SUM(CASE WHEN quantity_limit>committed AND (preorder=1 OR stock>0) THEN 1 ELSE 0 END) available_options
+    FROM (SELECT ci.campaign_id,ci.quantity_limit,
+      CASE WHEN ci.option_id='' THEN p.stock ELSE v.stock END stock,
+      CASE WHEN ci.option_id='' THEN p.preorder ELSE v.preorder END preorder,
+      COALESCE((SELECT SUM(i.remaining_qty) FROM guest_orders go JOIN orders o ON o.id=go.order_id JOIN item_balances i ON i.order_id=o.id
+        WHERE go.campaign_id=ci.campaign_id AND o.status<>'void' AND i.product_id=ci.product_id AND COALESCE(i.variant_id,'')=ci.option_id),0) committed
+      FROM guest_campaign_items ci JOIN products p ON p.id=ci.product_id LEFT JOIN product_details d ON d.product_id=p.id
+      LEFT JOIN product_variants v ON v.id=ci.option_id AND v.product_id=p.id LEFT JOIN gear_delivery g ON g.product_id=p.id AND g.option_id=ci.option_id
+      WHERE p.category='Gear' AND p.active=1 AND COALESCE(d.archived,0)=0 AND p.tax_bp IS NOT NULL AND COALESCE(v.price,p.price)>0
+      AND (COALESCE(g.pickup,1)=1 OR COALESCE(g.shipping,0)=1)
+      AND ((ci.option_id='' AND NOT EXISTS(SELECT 1 FROM product_variants x WHERE x.product_id=p.id)) OR (v.id IS NOT NULL AND v.active=1)))
+    GROUP BY campaign_id`);
   const deliveries = await rows(db, "SELECT * FROM gear_delivery");
   const catalog = await rows(
     db,
@@ -52,9 +70,11 @@ export async function guestAdmin(db: DB, q: Row) {
     `SELECT g.order_id,g.campaign_id,g.email,g.delivery,g.address,g.shipping_amount,g.state,g.reservation_expires,
  g.carrier,g.tracking,g.version,g.created_at,c.name campaign_name,o.code,o.payer,o.total,o.status payment_status
  FROM guest_orders g JOIN order_balances o ON o.id=g.order_id JOIN guest_campaigns c ON c.id=g.campaign_id
- WHERE (?='' OR g.state=?) ORDER BY g.created_at DESC,g.order_id LIMIT 51 OFFSET ?`,
+ WHERE (?='' OR g.state=?) AND (?='' OR g.order_id=?) ORDER BY g.created_at DESC,g.order_id LIMIT 51 OFFSET ?`,
     q.state || "",
     q.state || "",
+    q.targetOrderId ? str(q.targetOrderId, 80) : "",
+    q.targetOrderId ? str(q.targetOrderId, 80) : "",
     offset,
   );
   const detail = q.orderId
@@ -73,7 +93,8 @@ export async function guestAdmin(db: DB, q: Row) {
     : null;
   return {
     settings,
-    campaigns,
+    campaigns: campaigns.map(c => ({ ...c, configured_options: 0, available_options: 0,
+      ...availability.find(a => a.campaign_id === c.id) })),
     items,
     deliveries,
     catalog,
@@ -102,7 +123,7 @@ export async function mutateGuest(db: DB, m: Row, b: Row, tokenHash?: string) {
       ),
       audit(db, m.id, "guest_store_setting", "main", {
         enabled: b.enabled === true,
-        reason: noteText(b.reason),
+        reason: routineNote(b.reason, b.enabled ? "Guest ordering opened." : "Guest ordering closed."),
       }),
     ];
   } else if (b.action === "guestCampaign") {
@@ -181,9 +202,19 @@ export async function mutateGuest(db: DB, m: Row, b: Row, tokenHash?: string) {
       }),
     );
     result.id = id;
+    if (!old) {
+      const code = campaignCode(b.codeMode, b.customCode), digest = await codeHash(code);
+      if (await first(db, "SELECT id FROM guest_campaigns WHERE code_hash=?", digest))
+        fail("That campaign code is already in use. Choose another phrase.");
+      statements.push(stmt(db, "UPDATE guest_campaigns SET code_hash=?,code_version=1 WHERE id=?", digest, id));
+      result.code = code;
+    }
   } else if (b.action === "guestCode") {
     const id = str(b.id, 80),
-      code = b.revoke ? null : randomCode();
+      code = b.revoke ? null : campaignCode(b.codeMode, b.customCode),
+      digest = code ? await codeHash(code) : null;
+    if (digest && await first(db, "SELECT id FROM guest_campaigns WHERE code_hash=? AND id<>?", digest, id))
+      fail("That campaign code is already in use. Choose another phrase.");
     statements = [
       guard(
         db,
@@ -194,7 +225,7 @@ export async function mutateGuest(db: DB, m: Row, b: Row, tokenHash?: string) {
       stmt(
         db,
         "UPDATE guest_campaigns SET code_hash=?,code_version=code_version+1,version=version+1,updated_at=? WHERE id=?",
-        code ? await codeHash(code) : null,
+        digest,
         now,
         id,
       ),
@@ -203,7 +234,7 @@ export async function mutateGuest(db: DB, m: Row, b: Row, tokenHash?: string) {
         m.id,
         b.revoke ? "guest_code_revoked" : "guest_code_rotated",
         id,
-        { reason: noteText(b.reason) },
+        { reason: b.revoke ? noteText(b.reason) : routineNote(b.reason, "Campaign access code replaced.") },
       ),
     ];
     result = { ok: true, code }; // The code is returned once; never logged or stored in plaintext.
@@ -255,7 +286,7 @@ export async function mutateGuest(db: DB, m: Row, b: Row, tokenHash?: string) {
         id,
       );
     if (!old) fail("Order not found.", 404);
-    const reason = noteText(b.reason),
+    const reason = b.action === "guestExtend" ? noteText(b.reason) : routineNote(b.reason, `Fulfillment moved from ${old.state} to ${str(b.state, 30)}.`),
       version = int(b.version);
     statements.push(
       guard(

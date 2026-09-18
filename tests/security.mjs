@@ -104,6 +104,13 @@ try {
     "SECURITY-SCHEMA.sql",
     "BETA-SCHEMA.sql",
   "ROUNDS-SCHEMA.sql",
+    "GUEST-SCHEMA.sql",
+    "AUTOPILOT-SCHEMA.sql",
+    "REWARDS-SCHEMA.sql",
+    "EARNING-SCHEMA.sql",
+    "REDEMPTION-SCHEMA.sql",
+    "PROFILE-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql",
   ])
     await db.exec(
       readFileSync(file, "utf8")
@@ -237,21 +244,41 @@ try {
     (await r.json()).orders.length === 0,
     "members cannot read another account history",
   );
-  const race = await batch("last-stock purchase race", 12, () =>
-    request("/api/pilot", order("race"), sessions.bob),
+  // The earning ledger deliberately rejects stale concurrent account snapshots.
+  // Retry conflicts with the original IDs, as the checkout recovery UI does.
+  const raceOrders = Array.from({ length: 12 }, () => order("race"));
+  const race = await batch("last-stock purchase race", 12, (i) =>
+    request("/api/pilot", raceOrders[i], sessions.bob),
   );
+  check(race.filter((r) => r.status === 200).length <= 3,
+    "concurrent stock requests never sell more than available");
+  for (let i = 0; i < race.length; i++) {
+    if (race[i].status === 409) {
+      race[i] = await request("/api/pilot", raceOrders[i], sessions.bob);
+      await race[i].arrayBuffer();
+    }
+  }
   check(
     race.filter((r) => r.status === 200).length === 3,
-    "exactly available units sell under concurrency",
+    "exactly available units sell after bounded conflict recovery",
   );
   check(
     (await db.prepare("SELECT stock FROM products WHERE id='race'").first())
       .stock === 0,
     "stock race leaves zero stock",
   );
-  const credits = await batch("credit spend race", 12, () =>
-    request("/api/pilot", order("credit-item", "credit"), sessions.credit),
+  const creditOrders = Array.from({ length: 12 }, () => order("credit-item", "credit"));
+  const credits = await batch("credit spend race", 12, (i) =>
+    request("/api/pilot", creditOrders[i], sessions.credit),
   );
+  check(credits.filter((r) => r.status === 200).length <= 3,
+    "concurrent credit requests never spend more than the balance");
+  for (let i = 0; i < credits.length; i++) {
+    if (credits[i].status === 409) {
+      credits[i] = await request("/api/pilot", creditOrders[i], sessions.credit);
+      await credits[i].arrayBuffer();
+    }
+  }
   check(
     credits.filter((r) => r.status === 200).length === 3,
     "credit cannot be double spent",

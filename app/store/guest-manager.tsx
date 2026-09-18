@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, money, date, type Row } from "./shared";
+import { campaignStatus } from "@/lib/guest/campaign-status";
+import './admin-experience.css';
 import {
   useRoadmap,
   RoadmapStatus,
@@ -92,21 +94,25 @@ export default function GuestManager({
   onPayments,
   onTransactions,
   onPickups,
+  initialOrderId = "",
 }: {
   onProduct: (id: string) => void;
   onPayments: () => void;
   onTransactions: () => void;
   onPickups: () => void;
+  initialOrderId?: string;
 }) {
-  const [tab, setTab] = useState("campaigns"),
+  const [tab, setTab] = useState(initialOrderId ? "orders" : "campaigns"),
     [editing, setEditing] = useState<Row | null>(null),
     [code, setCode] = useState(""),
     [offset, setOffset] = useState(0),
-    [orderId, setOrderId] = useState("");
+    [orderId, setOrderId] = useState(initialOrderId),
+    [focusedOrderId, setFocusedOrderId] = useState(initialOrderId);
   const state = useRoadmap({
       kind: "guest",
       offset: String(offset),
       ...(orderId ? { orderId } : {}),
+      ...(focusedOrderId ? { targetOrderId: focusedOrderId } : {}),
     }),
     d = state.data,
     a = state.action;
@@ -160,7 +166,7 @@ export default function GuestManager({
                       label: "Enable guest ordering",
                       type: "checkbox",
                     },
-                    reasonField,
+                    { ...reasonField, label: "Note (optional)", optional: true },
                   ]}
                   busy={a.busy}
                   submit={(v) =>
@@ -190,7 +196,7 @@ export default function GuestManager({
                     <div>
                       <h3>{c.name}</h3>
                       <p className="fine">
-                        {c.active ? "Active" : "Paused"} · {date(c.starts_at)}{" "}
+                        {date(c.starts_at)}{" "}
                         to {date(c.ends_at)}
                       </p>
                     </div>
@@ -208,35 +214,13 @@ export default function GuestManager({
                       Edit campaign
                     </Button>
                   </div>
+                  <CampaignAvailability campaign={c} orderingEnabled={!!d.settings.enabled} />
                   <p>{c.description}</p>
                   <p className="fine">
                     Code {c.code_configured ? "configured" : "not configured"} ·
                     reservations {c.reservation_hours} hours
                   </p>
-                  <ActionForm
-                    key={c.id + ":" + c.version}
-                    title="Campaign access"
-                    initial={{ reason: "", revoke: false }}
-                    fields={[
-                      reasonField,
-                      {
-                        key: "revoke",
-                        label: "Revoke without issuing a replacement",
-                        type: "checkbox",
-                      },
-                    ]}
-                    label="Rotate / revoke code"
-                    busy={a.busy}
-                    submit={async (v) => {
-                      const r = await a.send({
-                        action: "guestCode",
-                        id: c.id,
-                        version: c.version,
-                        ...v,
-                      });
-                      setCode(r?.code || "");
-                    }}
-                  />
+                  <CampaignAccess key={c.id + ":" + c.version} campaign={c} action={a} onCode={setCode}/>
                 </article>
               ))}
               {code ? (
@@ -259,13 +243,14 @@ export default function GuestManager({
                   value={editing}
                   catalog={d.catalog}
                   action={a}
-                  close={() => setEditing(null)}
+                  close={(newCode?: string) => { setEditing(null); if (newCode) setCode(newCode); }}
                   onProduct={onProduct}
                 />
               ) : null}
             </>
           ) : (
             <>
+              {focusedOrderId ? <div className="notice"><p>Showing the guest order selected in Needs attention.</p><Button variant="secondary" onClick={() => { setFocusedOrderId(""); setOrderId(""); setOffset(0); }}>Show all guest orders</Button></div> : null}
               <div className="inline-actions">
                 <Button onClick={onPayments}>Confirm payments</Button>
                 <Button variant="secondary" onClick={onTransactions}>
@@ -345,7 +330,7 @@ export default function GuestManager({
                               { key: "tracking", label: "Tracking reference" },
                             ]
                           : []),
-                        reasonField,
+                        { ...reasonField, label: "Fulfillment note (optional)", optional: true },
                       ]}
                       label={"Mark " + nextState(o).replaceAll("_", " ")}
                       busy={a.busy}
@@ -391,7 +376,7 @@ export default function GuestManager({
                 </article>
               ))}
               {!d.orders.length ? (
-                <p className="notice">No guest orders yet.</p>
+                <p className="notice">{focusedOrderId ? "The selected guest order is no longer available." : "No guest orders yet."}</p>
               ) : null}
               <div className="inline-actions">
                 <Button
@@ -415,6 +400,17 @@ export default function GuestManager({
       ) : null}
     </section>
   );
+}
+export function CampaignAvailability({campaign, orderingEnabled}: {campaign: Row; orderingEnabled: boolean}) {
+  const status = campaignStatus(campaign, orderingEnabled);
+  return <div><span className="status">{status.label}</span><p className="fine">{status.reason}</p></div>;
+}
+function CodeFields({mode,code,onMode,onCode}:{mode:string;code:string;onMode:(v:string)=>void;onCode:(v:string)=>void}) {
+  return <div className="road-stack"><SelectField label="Campaign code" value={mode} onChange={onMode} options={[["random","Generate an easy-to-read code"],["custom","Use my own phrase or code"]]}/>{mode==='custom'?<Field label="Your phrase or code" value={code} onChange={(e:React.ChangeEvent<HTMLInputElement>)=>onCode(e.target.value)} minLength={8} maxLength={64} required autoComplete="off"/>:null}<p className="fine">Codes ignore capitalization, spaces, and hyphens. Custom codes need at least 8 letters or numbers. Share this campaign code only with your intended shoppers.</p></div>;
+}
+function CampaignAccess({campaign:c,action:a,onCode}:{campaign:Row;action:ReturnType<typeof useRoadmap>["action"];onCode:(v:string)=>void}) {
+  const [mode,setMode]=useState('random'),[code,setCode]=useState(''),[revoke,setRevoke]=useState(false),[note,setNote]=useState('');
+  return <details className="road-item"><summary>{c.code_configured?'Change campaign code':'Issue campaign code'}</summary><form className="road-stack" onSubmit={async e=>{e.preventDefault();const r=await a.send({action:'guestCode',id:c.id,version:c.version,revoke,codeMode:mode,customCode:code,reason:note});if(r)onCode(r.code||'');}}><fieldset disabled={a.busy||!!a.pending} className="road-stack"><CheckField label="Revoke access without a replacement code" checked={revoke} onChange={setRevoke}/>{!revoke?<CodeFields mode={mode} code={code} onMode={setMode} onCode={setCode}/>:null}<Field label={revoke?'Reason for revoking access':'Note (optional)'} value={note} onChange={(e:React.ChangeEvent<HTMLInputElement>)=>setNote(e.target.value)} required={revoke} minLength={revoke?5:undefined} maxLength={1000}/><p className="fine">Replacing or revoking the code signs out existing campaign sessions. Saved order receipt access is preserved.</p><Button type="submit">{revoke?'Revoke campaign access':c.code_configured?'Replace campaign code':'Issue code'}</Button></fieldset></form></details>;
 }
 function nextState(o: Row) {
   return (
@@ -441,11 +437,13 @@ function CampaignEditor({
   catalog: Row[];
   deliveries: Row[];
   action: ReturnType<typeof useRoadmap>["action"];
-  close: () => void;
+  close: (code?: string) => void;
   onProduct: (id: string) => void;
 }) {
   const [v, set] = useState<Row>({
     ...value,
+    codeMode: 'random',
+    customCode: '',
     starts: localDate(value.starts_at),
     ends: localDate(value.ends_at),
     cap: value.shipping_cap == null ? "" : value.shipping_cap / 100,
@@ -481,9 +479,10 @@ function CampaignEditor({
           freeShippingThreshold: v.free === "" ? null : cents(v.free),
           shippingTaxBp: Math.round(Number(v.tax) * 100),
           pickupNote: v.pickup_note || "",
+          ...(!v.id ? { codeMode: v.codeMode, customCode: v.customCode } : {}),
           items,
         });
-        if (r) close();
+        if (r) close(r.code);
       }}
     >
       <h2>{v.id ? "Edit" : "New"} campaign</h2>
@@ -519,6 +518,7 @@ function CampaignEditor({
         checked={!!v.active}
         onChange={(x) => set({ ...v, active: x })}
       />
+      {!v.id ? <CodeFields mode={v.codeMode} code={v.customCode} onMode={x=>set({...v,codeMode:x})} onCode={x=>set({...v,customCode:x})}/> : null}
       <h3>Gear options and campaign limits</h3>
       <p className="fine">
         Limits include all nonvoid orders in this campaign. Product stock
@@ -590,7 +590,7 @@ function CampaignEditor({
         <Button type="submit" disabled={action.busy}>
           Save campaign
         </Button>
-        <Button type="button" variant="secondary" onClick={close}>
+        <Button type="button" variant="secondary" onClick={() => close()}>
           Cancel
         </Button>
       </div>

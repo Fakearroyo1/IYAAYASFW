@@ -17,6 +17,7 @@ import {
 } from "./core";
 import { accessFor, canShop } from "./access";
 import { ledger, cashReference } from "./balances";
+import { EarningPlan } from "./earning";
 
 // Guest mode is set only by the administrator action, never by a request field.
 export async function placeOrder(
@@ -277,7 +278,11 @@ export async function placeOrder(
         stockQty: quantities.get(p.variant ? "v:" + p.variant.id : "p:" + p.id),
       })),
   );
-  const statements = [...sessionGuard(db, actor, tokenHash, managed)];
+  const earning = guest ? null : await EarningPlan.load(db, buyer, "order:" + id, "purchase", time);
+  const rewardCreditUsed = earning?.spendCredit(creditUsed) || 0;
+  earning?.purchase({ orderId: id, gross: total, merchandise: total - tax,
+    creditUsed, rewardCreditUsed, tabAdded, cashDue, cashConfirmed: managed && !unsettled });
+  const statements = [...sessionGuard(db, actor, tokenHash, managed), ...(earning?.prefixes || [])];
   if (managed)
     statements.push(
       guard(
@@ -465,6 +470,7 @@ export async function placeOrder(
         id,
       ),
     );
+  if (earning) statements.push(...earning.finish());
   statements.push(
     audit(db, actor, guest ? "guest_sale" : "consumption", id, {
       items,

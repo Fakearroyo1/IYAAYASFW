@@ -1,0 +1,12 @@
+.author {display:flex;align-items:center;gap:10px;max-width:100%;padding:6px 0;border:0;background:transparent;color:var(--foreground);text-align:left;cursor:pointer;border-radius:10px;}
+.author:focus-visible {outline:2px solid var(--primary);outline-offset:4px;}
+.author:hover strong {text-decoration:underline;text-underline-offset:3px;}
+.avatar,.initial {width:40px;height:40px;flex:0 0 40px;border-radius:50%;border:2px solid var(--profile-accent);object-fit:cover;}
+.initial {display:grid;place-items:center;background:var(--secondary);color:var(--profile-accent);font-weight:700;}
+.identity {min-width:0;display:grid;gap:4px;}
+.identity strong {overflow-wrap:anywhere;}
+.flair {display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--muted-foreground);font-size:12px;line-height:1.5;}
+.badge {display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid var(--border);border-radius:20px;background:var(--card);color:var(--foreground);}
+.badge svg {flex-shrink:0;color:var(--profile-accent);}
+.bio {white-space:pre-wrap;overflow-wrap:anywhere;}
+.account {display:grid;gap:12px;margin-bottom:24px;}

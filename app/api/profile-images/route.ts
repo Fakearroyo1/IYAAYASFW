@@ -139,7 +139,7 @@ export async function GET(request: Request) {
     if (image.member_id !== u.memberId && !(await adminVerified(env.DB, u))) {
       const p = await first(
         env.DB,
-        "SELECT p.* FROM member_profiles p JOIN members m ON m.id=p.member_id WHERE p.member_id=? AND p.visible=1 AND p.moderation='approved' AND m.active=1 AND (p.avatar_id=? OR p.banner_id=?)",
+        "SELECT p.member_id FROM member_profiles p JOIN members m ON m.id=p.member_id JOIN profile_approved_content a ON a.member_id=p.member_id WHERE p.member_id=? AND p.visible=1 AND p.moderation<>'hidden' AND m.active=1 AND (a.avatar_id=? OR a.banner_id=?)",
         image.member_id,
         id,
         id,

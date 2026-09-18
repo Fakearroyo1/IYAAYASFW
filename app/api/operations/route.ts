@@ -25,11 +25,11 @@ export async function POST(request:Request){try{
  if(request.headers.get('origin')!==new URL(request.url).origin)throw new RequestError('Open the store and try again.',403);
  const b=await readJson(request,14000);if(!env.DB)throw new RequestError('The store is unavailable.',503);
  if(!await rateLimit(env.DB,'operations-write:'+u.memberId,30,60000))throw new RequestError('Too many changes. Try again in one minute.',429);
- if(['taskUpdate','tabReminder',...EMAIL_ADMIN_ACTIONS,...INITIATIVE_ADMIN_ACTIONS].includes(b.action))await requireAdminAccess(env.DB,u);
+ if(['taskUpdate','taskBulk','tabReminder',...EMAIL_ADMIN_ACTIONS,...INITIATIVE_ADMIN_ACTIONS].includes(b.action))await requireAdminAccess(env.DB,u);
  if(['emailRequest','emailVerify'].includes(b.action)&&!await rateLimit(env.DB,'email-check:'+u.memberId,5,600000))throw new RequestError('Try again in ten minutes.',429);
  const m=await identity(env.DB,u);if(!m)throw new RequestError('Member access is required.',403);
  if(['emailRequest','emailVerify','emailCancel',...EMAIL_ADMIN_ACTIONS].includes(b.action))return json(await changeEmail(env.DB,m,b,u.tokenHash));
- if(['taskUpdate','tabReminder'].includes(b.action))return json(await updateTask(env.DB,m,b,u.tokenHash));
+ if(['taskUpdate','taskBulk','tabReminder'].includes(b.action))return json(await updateTask(env.DB,m,b,u.tokenHash));
  if(['interestSave','trialFeedback',...INITIATIVE_ADMIN_ACTIONS].includes(b.action))return json(await mutateInitiative(env.DB,m,b,u.tokenHash));
  throw new RequestError('Choose a supported action.',400);
  }catch(e){return failure(e)}}
