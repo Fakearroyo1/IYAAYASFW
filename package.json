@@ -11,7 +11,10 @@
     "deploy": "node scripts/deploy.mjs",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "test:security": "node tests/security.mjs"
+    "test:security": "node tests/security.mjs",
+    "build:gear": "node scripts/restore-assets.mjs && wrangler deploy --config gear/wrangler.json --dry-run --outdir .sites-runtime/gear-worker",
+    "deploy:gear": "node scripts/deploy-gear.mjs",
+    "test:roadmap": "node tests/rounds-5-7.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -35,3 +35,6 @@ await writeFile(
     logo.toString("base64") +
     '"/></svg>',
 );
+
+await mkdir(new URL("../gear/public/", import.meta.url), { recursive: true });
+await writeFile(new URL("../gear/public/brand-mark.png", import.meta.url), logo);

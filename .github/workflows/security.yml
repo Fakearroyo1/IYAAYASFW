@@ -31,10 +31,13 @@ jobs:
       - run: node tests/beta.mjs
       - run: node tests/rounds-1-2.mjs
       - run: node tests/rounds-3-4.mjs
+      - run: node tests/rounds-5-7.mjs
       - run: node tests/ui-contracts.mjs
       - run: node tests/http-security.mjs
       - run: pnpm run build
       - run: node tests/rounds-http.mjs
+      - run: pnpm run build:gear
+      - run: node tests/roadmap-http.mjs
       - run: node tests/auth-integration.mjs
       - run: node tests/security.mjs
       - run: node tests/hardening.mjs
