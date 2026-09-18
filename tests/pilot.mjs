@@ -5,21 +5,8 @@ import path from "node:path";
 import ts from "typescript";
 const out = path.resolve(".sites-runtime/pilot-tests");
 fs.mkdirSync(out, { recursive: true });
-for (const name of [
-  "catalog",
-  "owner",
-  "core",
-  "access",
-  "products",
-  "gear",
-  "orders",
-  "service",
-  "pricing",
-  "history",
-  "balances",
-  "transactions",
-  "community",
-]) {
+for (const filename of fs.readdirSync("lib/pilot").filter(f=>f.endsWith(".ts"))) {
+  const name=filename.slice(0,-3);
   const source = fs.readFileSync(`lib/pilot/${name}.ts`, "utf8");
   const code = ts
     .transpileModule(source, {
@@ -49,6 +36,13 @@ sqlite.exec(fs.readFileSync("PRODUCT-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("SECURITY-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("BETA-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("ROUNDS-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("GUEST-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("AUTOPILOT-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("REWARDS-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("EARNING-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("REDEMPTION-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("PROFILE-EXPERIENCE-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("ADMIN-EXPERIENCE-SCHEMA.sql", "utf8"));
 class Statement {
   constructor(sql, v = []) {
     this.sql = sql;

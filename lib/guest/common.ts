@@ -79,11 +79,19 @@ export function cookie(name: string, value: string, maxAge = SESSION_SECONDS) {
   return `${name}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`;
 }
 export function randomCode() {
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
-    b.toString(16).padStart(2, "0"),
-  )
-    .join("")
-    .toUpperCase();
+  // 60 random bits, grouped for reading aloud. Sessions and receipt keys use
+  // their own cryptographic generators; this is only the shared campaign code.
+  const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => alphabet[b & 31])
+    .join("").match(/.{4}/g)!.join("-");
+}
+export function campaignCode(mode: unknown, custom: unknown) {
+  if (mode == null || mode === "random") return randomCode();
+  if (mode !== "custom") fail("Choose a generated code or your own phrase.");
+  const code = str(custom, 64);
+  if (!/^[A-Za-z0-9 -]+$/.test(code) || code.replace(/[ -]/g, "").length < 8)
+    fail("Use at least 8 letters or numbers. Spaces and hyphens are welcome; keep the code within 64 characters.");
+  return code;
 }
 export const codeHash = (code: string) =>
   hash({

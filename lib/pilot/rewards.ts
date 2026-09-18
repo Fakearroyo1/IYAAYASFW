@@ -12,6 +12,8 @@ import {
   uid,
 } from "./core";
 import { operation, noteText } from "./operation";
+import { rewardWallet } from "./redemptions";
+import { earningSummary } from "./earning";
 export const REWARD_ADMIN_ACTIONS = [
   "rewardRule",
   "rewardSettings",
@@ -48,32 +50,57 @@ export function unlockedTier(settings: Row, total: number) {
     [...tiers].reverse().find((t: Row) => total >= t.threshold) || tiers[0]
   );
 }
-export async function earnedBadges(db: DB, memberId: string) {
-  return rows(
+export async function earnedBadges(db: DB, memberId: string): Promise<Row[]> {
+  const badges = await rows(
     db,
     `SELECT a.id award_id,a.badge_id,a.reason,a.issued_at,a.expires_at,d.name,d.description,d.criteria,d.category,d.rarity,d.color,d.symbol FROM badge_awards a JOIN badge_definitions d ON d.id=a.badge_id WHERE a.member_id=? AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at>?) AND d.active=1 ORDER BY a.issued_at DESC`,
     memberId,
     Date.now(),
   );
+  return badges.map((b) => ({ ...b, automatic: String(b.badge_id).startsWith("raffle-winner:") }));
 }
-async function profileView(db: DB, p: Row, settings: Row) {
-  const total = await rewardTotal(db, p.member_id),
-    tier = unlockedTier(settings, total),
-    badges = await earnedBadges(db, p.member_id),
+function profileShape(p: Row, settings: Row, total: number, badges: Row[]) {
+  const tier = unlockedTier(settings, total),
     selected = JSON.parse(p.display_badges);
   return {
     id: p.public_id,
     alias: p.alias,
+    memberName: p.member_name,
     bio: tier.bio ? p.bio : "",
     accent: tier.accent ? p.accent : "blue",
     theme: tier.theme ? p.theme : "classic",
     avatar: tier.avatar ? p.avatar_id : null,
     banner: tier.banner ? p.banner_id : null,
     tier: tier.name,
-    badges: badges
-      .filter((b) => selected.includes(b.award_id))
-      .slice(0, tier.slots),
+    badges: [
+      ...badges.filter((b) => b.automatic),
+      ...badges.filter((b) => !b.automatic && selected.includes(b.award_id)).slice(0, tier.slots),
+    ].map((b) => ({award_id:b.award_id,badge_id:b.badge_id,name:b.name,description:b.description,criteria:b.criteria,rarity:b.rarity,color:b.color,symbol:b.symbol,expires_at:b.expires_at,automatic:!!b.automatic})),
   };
+}
+async function profileView(db: DB, p: Row, settings: Row) {
+  return profileShape(p, settings, await rewardTotal(db, p.member_id), await earnedBadges(db, p.member_id));
+}
+// Shared by signed-in community views. Only approved public content is returned;
+// balances, email addresses, account controls and pending edits never leave here.
+export async function memberFlairProfiles(db: DB, memberIds: string[]) {
+  const ids = JSON.stringify([...new Set(memberIds)]);
+  if (!memberIds.length) return {} as Record<string, Row>;
+  const [settings, profiles, badges] = await Promise.all([
+    first(db, "SELECT * FROM reward_settings WHERE id='main'"),
+    rows(db, `SELECT p.*,m.name member_name,a.alias approved_alias,a.bio approved_bio,a.avatar_id approved_avatar,a.banner_id approved_banner,
+      COALESCE((SELECT SUM(l.amount) FROM reward_ledger l WHERE l.member_id=p.member_id),0) total
+      FROM member_profiles p JOIN members m ON m.id=p.member_id JOIN profile_approved_content a ON a.member_id=p.member_id
+      WHERE p.member_id IN(SELECT value FROM json_each(?)) AND p.visible=1 AND p.moderation<>'hidden' AND m.active=1`, ids),
+    rows(db, `SELECT a.member_id,a.id award_id,a.badge_id,a.expires_at,d.name,d.description,d.criteria,d.category,d.rarity,d.color,d.symbol
+      FROM badge_awards a JOIN badge_definitions d ON d.id=a.badge_id
+      WHERE a.member_id IN(SELECT value FROM json_each(?)) AND a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at>?) AND d.active=1`, ids, Date.now()),
+  ]);
+  const result: Record<string, Row> = {};
+  for (const p of profiles) result[p.member_id] = profileShape({
+    ...p, alias:p.approved_alias,bio:p.approved_bio,avatar_id:p.approved_avatar,banner_id:p.approved_banner,
+  }, settings!, p.total, badges.filter((b) => b.member_id===p.member_id).map(({member_id: _member, ...b}) => ({...b,automatic:String(b.badge_id).startsWith('raffle-winner:')})));
+  return result;
 }
 export async function rewardsPage(db: DB, m: Row, q: Row, admin = false) {
   const settings = (await first(
@@ -83,18 +110,18 @@ export async function rewardsPage(db: DB, m: Row, q: Row, admin = false) {
   if (q.kind === "profile") {
     const p = await first(
       db,
-      "SELECT p.* FROM member_profiles p JOIN members m ON m.id=p.member_id WHERE p.public_id=? AND p.visible=1 AND p.moderation='approved' AND m.active=1",
+      "SELECT p.member_id FROM member_profiles p JOIN members m ON m.id=p.member_id JOIN profile_approved_content a ON a.member_id=p.member_id WHERE p.public_id=? AND p.visible=1 AND p.moderation<>'hidden' AND m.active=1",
       str(q.id, 80),
     );
     if (!p) fail("Profile unavailable.", 404);
-    return { profile: await profileView(db, p, settings) };
+    return { profile: (await memberFlairProfiles(db, [p.member_id]))[p.member_id] };
   }
   const memberId = admin && q.memberId ? str(q.memberId, 80) : m.id,
     total = await rewardTotal(db, memberId),
     tier = unlockedTier(settings, total);
   const profile = await first(
       db,
-      "SELECT * FROM member_profiles WHERE member_id=?",
+      "SELECT p.*,m.name member_name FROM member_profiles p JOIN members m ON m.id=p.member_id WHERE member_id=?",
       memberId,
     ),
     control = await first(
@@ -128,12 +155,12 @@ export async function rewardsPage(db: DB, m: Row, q: Row, admin = false) {
   const candidates = season?.archived_at
     ? await rows(
         db,
-        `SELECT p.*,r.points,r.place FROM reward_season_results r JOIN member_profiles p ON p.member_id=r.member_id JOIN members m ON m.id=p.member_id WHERE r.season_id=? AND m.active=1 AND p.visible=1 AND p.board_opt_in=1 AND p.moderation='approved' ORDER BY r.place,p.public_id LIMIT 100`,
+        `SELECT p.*,ac.alias board_alias,r.points,r.place FROM reward_season_results r JOIN member_profiles p ON p.member_id=r.member_id JOIN members m ON m.id=p.member_id JOIN profile_approved_content ac ON ac.member_id=p.member_id WHERE r.season_id=? AND m.active=1 AND p.visible=1 AND p.board_opt_in=1 AND p.moderation<>'hidden' ORDER BY r.place,p.public_id LIMIT 100`,
         season.id,
       )
     : await rows(
         db,
-        `SELECT p.*,COALESCE(SUM(l.amount),0) points FROM member_profiles p JOIN members m ON m.id=p.member_id LEFT JOIN reward_ledger l ON l.member_id=p.member_id AND l.created_at>=? AND l.created_at<? WHERE m.active=1 AND p.visible=1 AND p.board_opt_in=1 AND p.moderation='approved' GROUP BY p.member_id HAVING COALESCE(SUM(l.amount),0)>0 ORDER BY points DESC,p.public_id LIMIT 100`,
+        `SELECT p.*,ac.alias board_alias,COALESCE(SUM(l.amount),0) points FROM member_profiles p JOIN members m ON m.id=p.member_id JOIN profile_approved_content ac ON ac.member_id=p.member_id LEFT JOIN reward_ledger l ON l.member_id=p.member_id AND l.created_at>=? AND l.created_at<? WHERE m.active=1 AND p.visible=1 AND p.board_opt_in=1 AND p.moderation<>'hidden' GROUP BY p.member_id HAVING COALESCE(SUM(l.amount),0)>0 ORDER BY points DESC,p.public_id LIMIT 100`,
         season?.starts_at || 0,
         season?.ends_at || 9999999999999,
       );
@@ -146,7 +173,7 @@ export async function rewardsPage(db: DB, m: Row, q: Row, admin = false) {
     const rank = p.place || place;
     return {
       id: p.public_id,
-      alias: p.alias,
+      alias: p.board_alias,
       points: p.points,
       place: rank,
       title: titles[rank - 1] || "Unit Supporter",
@@ -157,6 +184,9 @@ export async function rewardsPage(db: DB, m: Row, q: Row, admin = false) {
     tier,
     settings: { ...settings, tiers: JSON.parse(settings.tiers), titles },
     profile,
+    ownProfile: profile ? await profileView(db, profile, settings) : null,
+    wallet: await rewardWallet(db, memberId),
+    earning: await earningSummary(db, memberId),
     control: control || { frozen: 0, version: -1 },
     ledger: ledger.slice(0, 50),
     more: ledger.length > 50,
@@ -168,6 +198,8 @@ export async function rewardsPage(db: DB, m: Row, q: Row, admin = false) {
     memberId,
   };
   if (admin) {
+    const profileId = q.profileId ? str(q.profileId, 80) : "",
+      reportId = q.reportId ? str(q.reportId, 80) : "";
     result.members = await rows(
       db,
       "SELECT id,name,active FROM members ORDER BY name",
@@ -183,11 +215,16 @@ export async function rewardsPage(db: DB, m: Row, q: Row, admin = false) {
     );
     result.profiles = await rows(
       db,
-      "SELECT p.*,m.name member_name FROM member_profiles p JOIN members m ON m.id=p.member_id ORDER BY p.updated_at DESC LIMIT 100",
+      `SELECT p.*,m.name member_name FROM member_profiles p JOIN members m ON m.id=p.member_id
+       WHERE (?='' OR p.public_id=?) AND (?='' OR p.public_id=(SELECT profile_id FROM profile_reports WHERE id=?))
+       ORDER BY p.updated_at DESC LIMIT 100`,
+      profileId, profileId, reportId, reportId,
     );
     result.reports = await rows(
       db,
-      "SELECT r.*,p.alias FROM profile_reports r JOIN member_profiles p ON p.public_id=r.profile_id WHERE r.status='open' ORDER BY r.created_at LIMIT 100",
+      `SELECT r.*,p.alias FROM profile_reports r JOIN member_profiles p ON p.public_id=r.profile_id
+       WHERE (r.status='open' OR r.id=?) AND (?='' OR r.id=?) AND (?='' OR r.profile_id=?) ORDER BY r.created_at LIMIT 100`,
+      reportId, reportId, reportId, profileId, profileId,
     );
   }
   return result;
@@ -222,6 +259,8 @@ export async function mutateRewards(
       theme = str(b.theme || "classic", 20),
       avatar = b.avatarId ? str(b.avatarId, 80) : null,
       banner = b.bannerId ? str(b.bannerId, 80) : null;
+    if (int(b.version, -1) !== (old?.version ?? -1))
+      fail("The profile changed. Refresh before saving your changes.", 409);
     if (!ACCENTS.includes(accent) || !THEMES.includes(theme))
       fail("Choose an available profile treatment.");
     if (
@@ -239,7 +278,7 @@ export async function mutateRewards(
     )
       fail("Choose badges within your unlocked slots.");
     const earned = await earnedBadges(db, m.id);
-    if (b.badges.some((id: string) => !earned.some((e) => e.award_id === id)))
+    if (b.badges.some((id: string) => !earned.some((e) => e.award_id === id && !e.automatic)))
       fail("Choose currently earned badges.");
     const changed =
       !old ||
@@ -252,7 +291,7 @@ export async function mutateRewards(
         db,
         "COALESCE((SELECT version FROM member_profiles WHERE member_id=?),-1)=?",
         m.id,
-        int(b.version, -1),
+        old?.version ?? -1,
       ),
       guard(
         db,
@@ -324,7 +363,7 @@ export async function mutateRewards(
     statements = [
       guard(
         db,
-        "EXISTS(SELECT 1 FROM member_profiles WHERE public_id=? AND visible=1 AND moderation='approved')",
+        "EXISTS(SELECT 1 FROM member_profiles p JOIN profile_approved_content a ON a.member_id=p.member_id JOIN members m ON m.id=p.member_id WHERE p.public_id=? AND p.visible=1 AND p.moderation<>'hidden' AND m.active=1)",
         id,
       ),
       guard(
@@ -369,7 +408,7 @@ export async function mutateRewards(
         cap: b.cap,
         period: b.period,
         enabled: !!b.enabled,
-        reason: noteText(b.reason),
+        reason: str(b.reason || "", 1000),
       }),
     ];
   } else if (b.action === "rewardSettings") {
@@ -410,7 +449,7 @@ export async function mutateRewards(
       audit(db, m.id, "reward_settings_changed", "main", {
         tiers,
         titles,
-        reason: noteText(b.reason),
+        reason: str(b.reason || "", 1000),
       }),
     ];
   } else if (b.action === "rewardAward") {
@@ -490,6 +529,8 @@ export async function mutateRewards(
       str(b.id, 180),
     );
     if (!entry || entry.reverses) fail("Choose an original ledger entry.");
+    if (entry.rule_id === "spending")
+      fail("Spending rewards follow the purchase record. Correct or refund the purchase instead.");
     statements = [
       stmt(
         db,
@@ -561,6 +602,8 @@ export async function mutateRewards(
     const id = b.id ? str(b.id, 80) : op.id,
       color = str(b.color, 20),
       symbol = str(b.symbol, 20);
+    if (id.startsWith("raffle-winner:"))
+      fail("Seasonal winner badges are managed by raffle results.");
     if (!ACCENTS.includes(color) || !SYMBOLS.includes(symbol))
       fail("Choose an available badge design.");
     statements = [
@@ -585,7 +628,7 @@ export async function mutateRewards(
       ),
       audit(db, m.id, "badge_definition", id, {
         name: b.name,
-        reason: noteText(b.reason),
+        reason: str(b.reason || "", 1000),
       }),
     ];
   } else if (b.action === "badgeIssue") {
@@ -596,6 +639,8 @@ export async function mutateRewards(
           ? null
           : int(b.expiresAt, now + 60000, 9999999999999),
       reason = noteText(b.reason);
+    if (badgeId.startsWith("raffle-winner:"))
+      fail("Seasonal winner badges are issued automatically by raffle results.");
     statements = [
       guard(
         db,
@@ -690,7 +735,7 @@ export async function mutateRewards(
       audit(db, m.id, "profile_moderated", memberId, {
         state,
         removeImages: !!b.removeImages,
-        reason: noteText(b.reason),
+        reason: state === "approved" && !b.removeImages ? str(b.reason || "", 1000) : noteText(b.reason),
       }),
     );
   } else if (b.action === "profileResolve") {
@@ -744,7 +789,7 @@ export async function mutateRewards(
       ),
       stmt(
         db,
-        `INSERT INTO reward_season_results(season_id,member_id,points,place) SELECT ?,member_id,points,RANK() OVER(ORDER BY points DESC) FROM (SELECT l.member_id,SUM(l.amount) points FROM reward_ledger l JOIN member_profiles p ON p.member_id=l.member_id JOIN members m ON m.id=l.member_id WHERE l.created_at>=? AND l.created_at<? AND m.active=1 AND p.visible=1 AND p.board_opt_in=1 AND p.moderation='approved' GROUP BY l.member_id HAVING SUM(l.amount)>0)`,
+        `INSERT INTO reward_season_results(season_id,member_id,points,place) SELECT ?,member_id,points,RANK() OVER(ORDER BY points DESC) FROM (SELECT l.member_id,SUM(l.amount) points FROM reward_ledger l JOIN member_profiles p ON p.member_id=l.member_id JOIN members m ON m.id=l.member_id JOIN profile_approved_content ac ON ac.member_id=p.member_id WHERE l.created_at>=? AND l.created_at<? AND m.active=1 AND p.visible=1 AND p.board_opt_in=1 AND p.moderation<>'hidden' GROUP BY l.member_id HAVING SUM(l.amount)>0)`,
         id,
         s.starts_at,
         s.ends_at,

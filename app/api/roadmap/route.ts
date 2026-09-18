@@ -5,6 +5,8 @@ import { rateLimit } from "@/lib/auth/session";
 import { requireAdminAccess } from "@/lib/security/admin-access";
 import { readJson, RequestError } from "@/lib/security/http";
 import { guestAdmin, mutateGuest, GUEST_ACTIONS } from "@/lib/pilot/guest";
+import { redemptionPage, mutateRedemptions, REDEMPTION_MEMBER_ACTIONS, REDEMPTION_ADMIN_ACTIONS } from "@/lib/pilot/redemptions";
+import { mutateEarning, EARNING_ADMIN_ACTIONS } from "@/lib/pilot/earning";
 import {
   autopilotPage,
   mutateInventory,
@@ -53,6 +55,8 @@ export async function GET(request: Request) {
       return json(await autopilotPage(env.DB, q));
     if (q.kind === "rewards" || q.kind === "profile")
       return json(await rewardsPage(env.DB, m, q, admin));
+    if (q.kind === "redemptions")
+      return json(await redemptionPage(env.DB, m, q, admin));
     throw new RequestError("Choose a supported view.", 400);
   } catch (e) {
     return failure(e);
@@ -70,8 +74,10 @@ export async function POST(request: Request) {
         ...GUEST_ACTIONS,
         ...INVENTORY_ACTIONS,
         ...REWARD_ADMIN_ACTIONS,
+        ...REDEMPTION_ADMIN_ACTIONS,
+        ...EARNING_ADMIN_ACTIONS,
       ].includes(b.action);
-    if (!admin && !PROFILE_ACTIONS.includes(b.action))
+    if (!admin && ![...PROFILE_ACTIONS, ...REDEMPTION_MEMBER_ACTIONS].includes(b.action))
       throw new RequestError("Choose a supported action.", 400);
     if (admin) await requireAdminAccess(env.DB, u);
     if (!(await rateLimit(env.DB, "roadmap-write:" + u.memberId, 30, 60000)))
@@ -87,6 +93,10 @@ export async function POST(request: Request) {
       return json(await mutateGuest(env.DB, m, b, u.tokenHash));
     if (INVENTORY_ACTIONS.includes(b.action))
       return json(await mutateInventory(env.DB, m, b, u.tokenHash));
+    if ([...REDEMPTION_MEMBER_ACTIONS, ...REDEMPTION_ADMIN_ACTIONS].includes(b.action))
+      return json(await mutateRedemptions(env.DB, m, b, u.tokenHash));
+    if (EARNING_ADMIN_ACTIONS.includes(b.action))
+      return json(await mutateEarning(env.DB, m, b, u.tokenHash));
     return json(await mutateRewards(env.DB, m, b, u.tokenHash));
   } catch (e) {
     return failure(e);

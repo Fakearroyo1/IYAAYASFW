@@ -66,6 +66,88 @@ async function api(path, body) {
 function errorNode() {
   return el("p", { class: "error", role: "alert" });
 }
+function checkoutDraftId() {
+  const context = JSON.stringify([
+    data.campaign.name,
+    data.campaign.endsAt,
+    data.settings.cashtag,
+  ]);
+  try {
+    const draft = JSON.parse(
+      sessionStorage.getItem("gear-payment-draft") || "null",
+    );
+    if (
+      draft?.context === context &&
+      /^[a-f0-9-]{36}$/.test(draft.id) &&
+      !data.orders?.some((o) => o.id === draft.id)
+    )
+      return draft.id;
+  } catch {}
+  const id = crypto.randomUUID();
+  try {
+    sessionStorage.setItem("gear-payment-draft", JSON.stringify({ context, id }));
+  } catch {}
+  return id;
+}
+function cashAppHandoff(amount, reference) {
+  const tag = String(data.settings.cashtag || "").replace(/^\$/, ""),
+    section = el("div", { class: "notice" });
+  if (
+    !/^[A-Za-z][A-Za-z0-9_]{0,29}$/.test(tag) ||
+    !Number.isSafeInteger(amount) ||
+    amount < 1 ||
+    amount > 50000
+  )
+    return section;
+  const url = "https://cash.app/$" + tag + "/" + (amount / 100).toFixed(2),
+    message = el("p", { role: "status" }),
+    fallback = el("div", { hidden: "" }),
+    referenceField = field(
+      "Payment reference", "paymentReference", "text", reference, false,
+    ),
+    input = referenceField.querySelector("input"),
+    button = el(
+      "button",
+      { type: "button", class: "primary" },
+      "Copy reference & open Cash App",
+    );
+  input.readOnly = true;
+  input.addEventListener("focus", () => input.select());
+  fallback.append(
+    referenceField,
+    el("a", { href: url, target: "_blank", rel: "noopener noreferrer" },
+      "Open Cash App · " + money(amount)),
+  );
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await navigator.clipboard.writeText(reference);
+      let tab = null;
+      try {
+        tab = window.open(url, "_blank");
+        if (tab) tab.opener = null;
+      } catch {}
+      message.textContent = tab
+        ? "Reference copied. Paste it into the payment note, then return to report your payment."
+        : "Reference copied. Open Cash App below and paste it into the payment note.";
+      fallback.hidden = !!tab;
+    } catch {
+      message.textContent = "Your browser could not copy the reference. Select and copy it below, then open Cash App and paste it into the payment note.";
+      fallback.hidden = false;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  section.append(
+    el("p", {}, "Payment reference: " + reference),
+    button,
+    el("p", { class: "muted" },
+      "Opens " + money(amount) + " in Cash App. Paste the reference into its payment note. Opening Cash App does not submit this order or record a payment."),
+    message,
+    fallback,
+  );
+  return section;
+}
 function imageUrl(path) {
   if (typeof path !== "string") return null;
   const match = path.match(/^\/api\/product-images\?id=([a-f0-9-]{36})$/);
@@ -336,6 +418,8 @@ function drawBag(aside) {
 }
 function checkout() {
   clear();
+  quote = null;
+  const draftId = pending?.requestId || checkoutDraftId();
   const form = el("form", { class: "panel receipt" }),
     error = errorNode(),
     totals = el("div", { class: "notice" }),
@@ -386,15 +470,20 @@ function checkout() {
         ? [el("option", { value: "cashapp" }, "Cash App")]
         : []),
     ),
-    instructions = el("p", { class: "notice" });
-  const updateInstructions = () =>
-    (instructions.textContent =
+    instructions = el("p", { class: "notice" }),
+    handoff = el("div");
+  const updateInstructions = () => {
+    instructions.textContent =
       method.value === "cashapp"
         ? "Send the exact total to " +
           data.settings.cashtag +
           ". Your organizer will verify receipt."
         : data.settings?.cash_instructions ||
-          "Give cash to your organizer before reporting this payment.");
+          "Give cash to your organizer before reporting this payment.";
+    handoff.replaceChildren();
+    if (method.value === "cashapp" && quote)
+      handoff.append(cashAppHandoff(quote.total, "GEAR-" + draftId.slice(0, 12).toUpperCase()));
+  };
   method.addEventListener("change", updateInstructions);
   updateInstructions();
   const submit = el(
@@ -403,9 +492,11 @@ function checkout() {
     "Report payment & place order",
   );
   let quoteSequence = 0;
+  const lockedControls = new Map();
   async function updateQuote() {
     const sequence = ++quoteSequence;
     quote = null;
+    handoff.replaceChildren();
     error.textContent = "";
     submit.disabled = true;
     address.hidden = delivery.value !== "shipping";
@@ -431,6 +522,7 @@ function checkout() {
         el("small", {}, "Includes " + money(quote.tax) + " tax."),
       );
       submit.disabled = false;
+      updateInstructions();
     } catch (e) {
       if (sequence === quoteSequence) error.textContent = e.message;
     }
@@ -447,6 +539,7 @@ function checkout() {
     totals,
     el("label", {}, "Payment method", method),
     instructions,
+    handoff,
     el(
       "label",
       { class: "check" },
@@ -479,7 +572,7 @@ function checkout() {
           .join("")
           .toUpperCase();
       pending = {
-        requestId: crypto.randomUUID(),
+        requestId: draftId,
         receiptSecret: secret,
         items: bag.map((p) => ({
           productId: p.productId,
@@ -508,10 +601,17 @@ function checkout() {
           : {}),
       };
     }
+    if (!lockedControls.size)
+      for (const control of form.querySelectorAll("input,select,button"))
+        if (control !== submit) {
+          lockedControls.set(control, control.disabled);
+          control.disabled = true;
+        }
     try {
       const result = await api("/api/orders", pending),
         secret = pending.receiptSecret;
       pending = null;
+      try { sessionStorage.removeItem("gear-payment-draft"); } catch {}
       bag = [];
       renderReceipt(result, secret);
     } catch (e) {
@@ -520,8 +620,13 @@ function checkout() {
         " " +
         (e.status && e.status < 500
           ? "Review the order before trying again."
-          : "Keep this page open. Retry sends the same order safely.");
-      if (e.status && e.status < 500) pending = null;
+          : "Keep this page open. Do not pay again; retry sends the same order safely.");
+      if (e.status && e.status < 500) {
+        pending = null;
+        for (const [control, disabled] of lockedControls) control.disabled = disabled;
+        lockedControls.clear();
+        submit.textContent = "Report payment & place order";
+      } else submit.textContent = "Retry same order";
     } finally {
       submitting = false;
       submit.disabled = false;
@@ -624,6 +729,7 @@ document
   .addEventListener("click", () => dialog.close());
 document.querySelector("#signout").addEventListener("click", async () => {
   await api("/api/signout", {});
+  try { sessionStorage.removeItem("gear-payment-draft"); } catch {}
   entry();
 });
 document.querySelector("#theme").addEventListener("click", () => {

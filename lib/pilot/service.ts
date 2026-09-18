@@ -36,6 +36,7 @@ import {
 import { accessFor, canShop } from "./access";
 import { catalogState, extendedMutation } from "./products";
 import { placeOrder } from "./orders";
+import { EarningPlan } from "./earning";
 export { PilotError } from "./core";
 export async function initialize(db: DB) {
   if (await first(db, "SELECT id FROM settings WHERE id='main'")) return;
@@ -616,7 +617,11 @@ export async function mutate(
       int(b.controlsVersion) !== oldControls.version
     )
       fail("Member controls changed. Review them again.", 409);
+    const balanceEarning = old && (debt !== old.debt || credit !== old.credit)
+      ? await EarningPlan.load(db, id, "adjustment:" + operationId, "admin_balance_adjustment") : null;
+    balanceEarning?.adjustBalances(debt, credit);
     const statements = [
+      ...(balanceEarning?.prefixes || []),
       guard(
         db,
         "COALESCE((SELECT version FROM member_controls WHERE member_id=?),0)=?",
@@ -728,6 +733,7 @@ export async function mutate(
           after: { snacks, gear },
         }),
       );
+    if (balanceEarning) statements.push(...balanceEarning.finish());
     await atomic(db, statements);
     return { ok: true, memberId: id, created: !old, roleChanged };
   }

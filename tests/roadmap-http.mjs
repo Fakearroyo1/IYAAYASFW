@@ -67,6 +67,10 @@ try {
     "GUEST-SCHEMA.sql",
     "AUTOPILOT-SCHEMA.sql",
     "REWARDS-SCHEMA.sql",
+    "EARNING-SCHEMA.sql",
+    "REDEMPTION-SCHEMA.sql",
+    "PROFILE-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql",
   ])
     await db.exec(
       readFileSync(f, "utf8")
@@ -441,7 +445,7 @@ try {
     (
       await post("member", {
         action: "profileSave",
-        version: -1,
+        version: (await one("SELECT version FROM member_profiles WHERE member_id='member'")).version,
         alias: "Crew",
         bio: "",
         accent: "blue",
@@ -462,7 +466,7 @@ try {
   await post("owner", {
     action: "profileModerate",
     memberId: "member",
-    version: 0,
+    version: (await one("SELECT version FROM member_profiles WHERE member_id='member'")).version,
     state: "approved",
     reason: "Avatar approved in isolated test",
   });
@@ -471,10 +475,25 @@ try {
       200,
     "approved opted-in image visible to signed-in member",
   );
+  ok((await post("member", {
+    action: "profileSave",
+    version: (await one("SELECT version FROM member_profiles WHERE member_id='member'")).version,
+    alias: "Pending identity edit", bio: "", accent: "blue", theme: "classic",
+    visible: true, boardOptIn: false, badges: [], avatarId: pngData.id,
+  })).status === 200, "member can submit another profile edit");
+  ok((await request("locked", "/api/profile-images?id=" + pngData.id)).status === 200,
+    "last approved image remains available while a new profile edit awaits review");
+  const publicId = (await one("SELECT public_id FROM member_profiles WHERE member_id='member'")).public_id;
+  const reviewedProfile = await request("locked", "/api/roadmap?kind=profile&id=" + publicId);
+  const reviewedProfileData = await reviewedProfile.json();
+  ok(reviewedProfile.status === 200 && reviewedProfileData.profile.alias === "Crew" && reviewedProfileData.profile.memberName === "member",
+    "authenticated public profile retains reviewed alias and actual member name during pending edit");
+  ok((await request("", "/api/roadmap?kind=profile&id=" + publicId)).status === 401,
+    "profile identity is not exposed without a member session");
   await post("owner", {
     action: "profileModerate",
     memberId: "member",
-    version: 1,
+    version: (await one("SELECT version FROM member_profiles WHERE member_id='member'")).version,
     state: "hidden",
     reason: "Testing immediate moderation hide",
   });

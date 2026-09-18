@@ -46,6 +46,13 @@ try {
     "SECURITY-SCHEMA.sql",
     "BETA-SCHEMA.sql",
   "ROUNDS-SCHEMA.sql",
+    "GUEST-SCHEMA.sql",
+    "AUTOPILOT-SCHEMA.sql",
+    "REWARDS-SCHEMA.sql",
+    "EARNING-SCHEMA.sql",
+    "REDEMPTION-SCHEMA.sql",
+    "PROFILE-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql",
   ])
     await db.exec(
       readFileSync(f, "utf8")

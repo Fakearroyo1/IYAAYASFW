@@ -18,6 +18,8 @@ run("INSERT INTO settings(id,enabled) VALUES('main',1)");
 const users={};for(const [id,role]of[['owner','admin'],['admin','admin'],['buyer','member'],['gear','member']]){run('INSERT INTO members(id,user_id,email,name,role,debt,credit) VALUES(?,?,?,?,?,?,?)',id,id,id+'@example.test',id,role,id==='buyer'?2100:0,id==='buyer'?700:0);users[id]={...get('SELECT * FROM members WHERE id=?',id),posting_enabled:1};}
 run("INSERT INTO member_access(member_id,snacks,gear) VALUES('gear',0,1)");
 const snapshot=JSON.stringify(sqlite.prepare('SELECT * FROM members').all());for(let n=0;n<2;n++)sqlite.exec(fs.readFileSync('ROUNDS-SCHEMA.sql','utf8'));
+for(const f of ['GUEST-SCHEMA.sql', 'AUTOPILOT-SCHEMA.sql', 'REWARDS-SCHEMA.sql', 'EARNING-SCHEMA.sql', 'REDEMPTION-SCHEMA.sql', 'PROFILE-EXPERIENCE-SCHEMA.sql', 'ADMIN-EXPERIENCE-SCHEMA.sql'])sqlite.exec(fs.readFileSync(f,'utf8'));
+
 let checks=0;const ok=(x,n)=>{assert.ok(x,n);checks++},bad=async(f,re)=>{await assert.rejects(f,re);checks++};
 ok(JSON.stringify(sqlite.prepare('SELECT * FROM members').all())===snapshot,'repeat migration preserves all members and balances');
 class S{constructor(sql,v=[]){this.sql=sql;this.v=v}bind(...v){return new S(this.sql,v)}async first(){return get(this.sql,...this.v)||null}async all(){return{results:sqlite.prepare(this.sql).all(...this.v)}}async run(){const r=run(this.sql,...this.v);return{meta:{changes:r.changes}}}}

@@ -1,5 +1,7 @@
 # Remaining roadmap release
 
+For the subsequent dollar-based earning, redemption, raffle, profile, and grouped-navigation update, use [Murley Bucks and everyday admin workflows](murley-bucks-and-workflows.md). That update replaces the fixed purchase bonus described below; this document records the original rounds 5–7 release.
+
 This release covers the remaining agreed roadmap except Round 8 integrations and optional conveniences. The snack shop retains its quick add-to-tab experience. Murley Bucks are recognition points, separate from money, account credit, prices, and checkout.
 
 ## Where to find the new controls

@@ -1,0 +1,7 @@
+.task-bulk-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.65rem;padding:1rem 0;border-bottom:1px solid var(--border)}
+.task-select-row{display:flex;align-items:center;gap:.8rem}
+.task-select-row>input[type=checkbox]{flex:0 0 1.15rem;width:1.15rem;height:1.15rem;accent-color:var(--primary)}
+.task-select-row>.operation-row{flex:1;min-width:0}
+.task-dialog .road-stack{display:grid;gap:1rem}
+.task-dialog fieldset{min-width:0}
+@media(max-width:600px){.task-bulk-toolbar>*{max-width:100%}.task-select-row{gap:.5rem}.task-select-row>.operation-row{padding-left:.25rem}.task-select-row .operation-summary{min-width:0}}

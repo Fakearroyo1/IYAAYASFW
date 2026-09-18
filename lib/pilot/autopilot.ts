@@ -281,7 +281,7 @@ export async function mutateInventory(
       ),
       audit(db, m.id, "inventory_plan", p, {
         optionId: v,
-        reason: noteText(b.reason),
+        reason: noteText(b.reason || "", 1000, 0),
       }),
     ];
   } else if (b.action === "restockCreate") {
@@ -575,7 +575,7 @@ export async function mutateInventory(
     );
   } else if (b.action === "monthClose" || b.action === "monthReopen") {
     const report = await monthReport(db, b.month),
-      reason = noteText(b.reason),
+      reason = b.action === "monthReopen" ? noteText(b.reason) : noteText(b.reason || "Completed reconciliation checkpoints.", 1000, 0),
       version = int(b.version, -1);
     statements.push(
       guard(

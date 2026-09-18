@@ -54,6 +54,9 @@ import GearManager from "./store/gear-manager";
 import GuestManager from "./store/guest-manager";
 import InventoryAutopilot, {MonthClose} from "./store/inventory-autopilot";
 import Rewards from "./store/rewards";
+import AdminNavigation from "./store/admin-navigation";
+import AdminDashboard from "./store/admin-dashboard";
+import { AccountProfileCard } from "./store/member-flair";
 import PickupBoard from "./store/pickup-board";
 import Checkout from "./store/checkout";
 import BagItems from "./store/bag-items";
@@ -64,7 +67,8 @@ import EmailChanges from "./store/email-changes";
 import ProductInitiatives from "./store/initiatives";
 import TeamBoard, { ModerationQueue } from "./store/team-board";
 import TransactionHub from "./store/transaction-hub";
-import { PaymentConfirmation, TabPayment } from "./store/payment-forms";
+import { PaymentConfirmation, TabPayment, CashAppHandoff } from "./store/payment-forms";
+import { clearPaymentDraft } from "@/lib/cashapp";
 import { ThemeToggle, ThemePicker, BrandMark } from "./store/appearance";
 import { MessageSquare } from "lucide-react";
 import { ReceiveFields } from "./store/cost-inputs";
@@ -179,7 +183,7 @@ export default function Pilot() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [view, setView] = useState("account"),
-    [tab, setTab] = useState("attention"),
+    [tab, setTab] = useState("overview"),
     [category, setCategory] = useState("All"),
     [search, setSearch] = useState(""),
     [cart, setCart] = useState<Record<string, number>>({}),
@@ -194,6 +198,8 @@ export default function Pilot() {
     [uploading, setUploading] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState("pending");
   const [emailTarget,setEmailTarget]=useState<Row|null>(null);
+  const [inboxType,setInboxType]=useState("");
+  const [taskTarget,setTaskTarget]=useState({type:"",id:""});
   const [gearRevision, setGearRevision] = useState(0);
   const [gearId, setGearId] = useState(""),
     [pricingId, setPricingId] = useState(""),
@@ -463,7 +469,10 @@ export default function Pilot() {
             return next;
           });
         setReceipt({ kind: "order", ...j.order });
-      } else if (j.payment) setReceipt({ kind: "payment", ...j.payment });
+      } else if (j.payment) {
+        clearPaymentDraft("supply-tab-payment:" + member.id, j.payment.id);
+        setReceipt({ kind: "payment", ...j.payment });
+      }
       else
         setNotice(
           j.reference
@@ -802,6 +811,7 @@ export default function Pilot() {
       );
     return (
       <>
+        <AdminDashboard onNavigate={setTab} onInbox={type=>{setInboxType(type);setTab("attention")}} />
         <div className="stats">
           <div className="stat">
             <small>Recorded sales</small>
@@ -912,7 +922,7 @@ export default function Pilot() {
           <div>
             <span className="eyebrow">Store management</span>
             <h1>Manage your store.</h1>
-            <p>Inventory, balances, and payments. One shared record.</p>
+            <p>Money, products, and people. Everything in its place.</p>
           </div>
           <div className="inline-actions">
             <a className="text-link" href="/api/admin/access">
@@ -924,41 +934,10 @@ export default function Pilot() {
             </Button>
           </div>
         </div>
-        <div className="admin-section-select"><Field label="Management section">
-          <NativeSelect value={tab} onChange={e=>setTab(e.target.value)}>
-            {['attention','overview','access','trials','transactions','inventory','planning','month','guest','rewards','pricing','pickups','payments','members','team','community','activity','settings'].map(t=><option key={t} value={t}>{t==='attention'?'Needs attention':t==='access'?'Email access':t==='planning'?'Inventory planning':t==='month'?'Close month':t==='guest'?'Guest gear':t==='rewards'?'Murley Bucks':t[0].toUpperCase()+t.slice(1)}</option>)}
-          </NativeSelect>
-        </Field></div>
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="admin-tabs">
-            {[
-              "attention",
-              "overview",
-              "access",
-              "trials",
-              "transactions",
-              "inventory",
-              "planning",
-              "month",
-              "guest",
-              "rewards",
-              "pricing",
-              "pickups",
-              "payments",
-              "members",
-              "team",
-              "community",
-              "activity",
-              "settings",
-            ].map((t) => (
-              <TabsTrigger key={t} value={t}>
-                {t === "attention" ? "Needs attention" : t === "access" ? "Email access" : t === "trials" ? "Trials" : t === "planning" ? "Inventory planning" : t === "month" ? "Close month" : t === "guest" ? "Guest gear" : t === "rewards" ? "Murley Bucks" : t[0].toUpperCase() + t.slice(1)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="management-workspace">
+        <AdminNavigation value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next)}} />
         <div className="admin-content">
-          {shopControls()}
+          {["overview", "settings"].includes(tab) ? shopControls() : null}
           {data.admin.resetCount ? (
             <div className="notice reset-notice">
               <strong>
@@ -971,19 +950,25 @@ export default function Pilot() {
             </div>
           ) : null}
           {tab === "attention" ? (
-            <TaskInbox member={member} onAction={(destination,target,person)=>{if(destination==="requests"){navigate("requests");return}setTab(destination);if(destination==="members")setMemberSearch(person);if(destination==="inventory"){const p=products.find(p=>p.id===target);if(p?.category==="Gear")setGearId(target);else setInventorySearch(p?.name||person)}}}/>
+            <TaskInbox key={inboxType} initialType={inboxType} member={member} onAction={(destination,target,person,type,reference)=>{
+              if(destination==="requests"){navigate("requests");return}
+              setTaskTarget({type,id:target});setTab(destination);
+              if(type==="payment"){setPaymentFilter("all");open("verify",{id:target,amount:0,member_name:person,order_code:reference.startsWith("P-")?undefined:reference});}
+              if(destination==="members")setMemberSearch(person);
+              if(destination==="inventory"){const p=products.find(p=>p.id===target);if(p?.category==="Gear")setGearId(target);else setInventorySearch(p?.name||person)}
+            }}/>
           ) : tab === "access" ? (
             <EmailChanges member={member} admin targetMember={emailTarget||undefined}/>
           ) : tab === "trials" ? (
             <ProductInitiatives member={member} admin onProduct={id=>{const p=products.find(p=>p.id===id);if(p?.category==="Gear"){setGearId(id);setTab("inventory")}else if(p){setTab("inventory");open("product",p)}else{setInventorySearch("");setTab("inventory");refresh()}}}/>
           ) : tab === "guest" ? (
-            <GuestManager onProduct={id=>{setGearId(id);setTab("inventory")}} onPayments={()=>setTab("payments")} onTransactions={()=>setTab("transactions")} onPickups={()=>setTab("pickups")}/>
+            <GuestManager key={taskTarget.type+":"+taskTarget.id} initialOrderId={taskTarget.type==="guest"?taskTarget.id:""} onProduct={id=>{setGearId(id);setTab("inventory")}} onPayments={()=>setTab("payments")} onTransactions={()=>setTab("transactions")} onPickups={()=>setTab("pickups")}/>
           ) : tab === "planning" ? (
             <InventoryAutopilot/>
           ) : tab === "month" ? (
             <MonthClose/>
           ) : tab === "rewards" ? (
-            <Rewards admin/>
+            <Rewards key={taskTarget.type+":"+taskTarget.id} admin initialProfileId={taskTarget.type==="profile"?taskTarget.id:""} initialReportId={taskTarget.type==="profile-report"?taskTarget.id:""}/>
           ) : tab === "overview" ? (
             overview()
           ) : tab === "transactions" ? (
@@ -1435,6 +1420,7 @@ export default function Pilot() {
             settingsView()
           )}
         </div>
+        </div>
       </>
     );
   }
@@ -1607,7 +1593,7 @@ export default function Pilot() {
             Email the store team
           </a>
         </div>
-        <div className="notice recognition-account"><div><strong>Murley Bucks & your profile</strong><p>Earn recognition, choose badges, and join the Support Board.</p></div><Button variant="secondary" onClick={()=>navigate("recognition")}>Open recognition</Button></div>
+        <AccountProfileCard onCustomize={()=>navigate("recognition")} />
         <InstallGuide />
         <div className="balance-grid">
           <section className="balance-card">
@@ -3180,34 +3166,19 @@ export default function Pilot() {
               {receipt.status === "pending" ? (
                 <>
                   <p className="notice">
-                    {receipt.method === "cash"
-                      ? "Place the cash in the cash box, labeled with your name and this reference."
-                      : "Send your Cash App payment with this reference in the note."}{" "}
+                    {receipt.kind === "payment"
+                      ? "Your payment report is saved."
+                      : receipt.method === "cash"
+                        ? "Place the cash in the cash box, labeled with your name and this reference."
+                        : "Send your Cash App payment with this reference in the note."}{" "}
                     An administrator will confirm receipt.
                   </p>
-                  {receipt.method === "cashapp" ? (
-                    <Button asChild className="full">
-                      <a
-                        href={
-                          "https://cash.app/$" +
-                          data.settings.cashtag +
-                          "/" +
-                          ((receipt.cash_due ?? receipt.amount) / 100).toFixed(
-                            2,
-                          )
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open Cash App ·{" "}
-                        {money(receipt.cash_due ?? receipt.amount)}
-                        <ArrowUpRight size={17} />
-                      </a>
-                    </Button>
+                  {receipt.method === "cashapp" && receipt.kind === "order" ? (
+                    <CashAppHandoff cashtag={data.settings.cashtag} amount={receipt.cash_due ?? receipt.amount} reference={receipt.code || receipt.reference || "PAY-" + receipt.id.slice(0, 8).toUpperCase()} />
+                  ) : receipt.kind === "payment" ? (
+                    <p className="fine">Payment reported. Wait for administrator confirmation; do not send it again.</p>
                   ) : (
-                    <p className="fine">
-                      Cash due: {money(receipt.cash_due ?? receipt.amount)}
-                    </p>
+                    <p className="fine">Cash due: {money(receipt.cash_due ?? receipt.amount)}</p>
                   )}
                 </>
               ) : (

@@ -14,6 +14,7 @@ import {
   hash,
 } from "./core";
 import { ledger, cashReference } from "./balances";
+import { EarningPlan } from "./earning";
 type Atomic = (db: DB, statements: D1PreparedStatement[]) => Promise<unknown>;
 
 export async function applyCredit(db: DB, m: Row, b: Row, atomic: Atomic) {
@@ -29,8 +30,11 @@ export async function applyCredit(db: DB, m: Row, b: Row, atomic: Atomic) {
   const old = await duplicate();
   if (old) return { payment: old, replayed: true };
   const time = Date.now();
+  const earning = await EarningPlan.load(db, m.id, "payment:" + id, "credit_settlement", time);
+  earning.settle(amount, earning.spendCredit(amount));
   try {
     await atomic(db, [
+      ...earning.prefixes,
       guard(
         db,
         "EXISTS(SELECT 1 FROM members WHERE id=? AND active=1 AND debt>=? AND credit>=?)",
@@ -58,6 +62,7 @@ export async function applyCredit(db: DB, m: Row, b: Row, atomic: Atomic) {
         time,
         time,
       ),
+      ...earning.finish(),
       ledger(
         db,
         m.id,
@@ -125,7 +130,12 @@ export async function verifyPayment(db: DB, m: Row, b: Row, atomic: Atomic) {
   // The UI confirms the actual amount and previews any excess becoming credit.
   if (b.expectedCredit !== undefined && int(b.expectedCredit) !== creditAdded)
     fail("The balance changed. Review the confirmation again.", 409);
+  const earning = member && p.purpose !== "topup"
+    ? await EarningPlan.load(db, member.id, "payment:" + p.id, "payment_confirmed") : null;
+  if (p.purpose === "settlement") earning?.settle(debtApplied);
+  else if (p.purpose === "purchase" && p.order_id) earning?.confirmPurchase(p.order_id, p.amount);
   const statements = [
+    ...(earning?.prefixes || []),
     guard(
       db,
       "EXISTS(SELECT 1 FROM payment_balances WHERE id=? AND status='pending' AND amount=?)",
@@ -179,6 +189,7 @@ export async function verifyPayment(db: DB, m: Row, b: Row, atomic: Atomic) {
       p.id,
     ),
   );
+  if (earning) statements.push(...earning.finish());
   if (member && (debtApplied || creditAdded))
     statements.push(
       ledger(
@@ -353,7 +364,11 @@ export async function correctTransaction(
     externalRefund = ["cash", "cashapp"].includes(refundMethod)
       ? amounts.toReturn
       : 0;
+  const earning = member
+    ? await EarningPlan.load(db, member.id, "correction:" + id, "purchase_correction", Date.now(), order.id) : null;
+  earning?.correct(order.id, amounts, refundMethod);
   const statements = [
+    ...(earning?.prefixes || []),
     guard(
       db,
       "EXISTS(SELECT 1 FROM order_balances WHERE id=? AND revision=? AND status=? AND total=?)",
@@ -485,6 +500,7 @@ export async function correctTransaction(
       ),
     );
   }
+  if (earning) statements.push(...earning.finish());
   statements.push(
     audit(db, m.id, "purchase_corrected", order.id, {
       adjustmentId: id,
