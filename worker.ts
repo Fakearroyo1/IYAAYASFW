@@ -43,6 +43,7 @@ export default {
       "/api/pilot",
       "/api/product-images",
       "/api/community",
+      "/api/operations",
     ].includes(path);
     let response: Response;
     const actionHeader =

@@ -59,6 +59,7 @@ for (const args of [
     "--config",
     configPath,
   ],
+  ["d1", "execute", "iyaayasfw-supply-db", "--remote", "--file", "ROUNDS-SCHEMA.sql", "--config", configPath],
   ["deploy", "--config", configPath],
 ]) {
   const result = spawnSync(process.execPath, [wrangler, ...args], {

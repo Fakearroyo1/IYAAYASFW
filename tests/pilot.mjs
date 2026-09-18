@@ -48,6 +48,7 @@ sqlite.exec(fs.readFileSync("AUTH-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("PRODUCT-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("SECURITY-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("BETA-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("ROUNDS-SCHEMA.sql", "utf8"));
 class Statement {
   constructor(sql, v = []) {
     this.sql = sql;

@@ -18,6 +18,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Field, date, type Row } from "./shared";
+import ProductInitiatives, { CreateInitiative } from "./initiatives";
 import { useCommunityAction } from "./community-action";
 export function ActionFeedback({
   action,
@@ -121,7 +122,8 @@ export default function CommunityBoard({
     [error, setError] = useState(""),
     [editor, setEditor] = useState<Row | null>(null),
     [moderation, setModeration] = useState<Row | null>(null),
-    [decision, setDecision] = useState<Row | null>(null);
+    [decision, setDecision] = useState<Row | null>(null),
+    [initiative,setInitiative]=useState<Row|null>(null);
   async function refresh(cursor?: string) {
     if (!shop) return;
     const q = new URLSearchParams({
@@ -203,6 +205,8 @@ export default function CommunityBoard({
           contact the store team.
         </p>
       ) : null}
+      <ProductInitiatives key={shop} member={member} shop={shop} />
+      <CreateInitiative request={initiative} close={()=>setInitiative(null)} refresh={()=>refresh()} />
       <div className="community-list">
         {data.records.map((r: Row) => (
           <article className="panel community-card" key={r.id}>
@@ -277,6 +281,7 @@ export default function CommunityBoard({
               <div className="inline-actions">
                 {admin ? (
                   <>
+                    <Button variant="secondary" disabled={disabled || r.status==="denied" || !!r.initiative_id} onClick={()=>setInitiative(r)}>{r.initiative_id?"Linked product created":"Create trial / interest check"}</Button>
                     <Button
                       variant="secondary"
                       disabled={disabled}

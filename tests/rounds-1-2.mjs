@@ -42,6 +42,7 @@ for (const f of [
   "PRODUCT-SCHEMA.sql",
   "SECURITY-SCHEMA.sql",
   "BETA-SCHEMA.sql",
+  "ROUNDS-SCHEMA.sql",
 ])
   sqlite.exec(fs.readFileSync(f, "utf8"));
 class Statement {

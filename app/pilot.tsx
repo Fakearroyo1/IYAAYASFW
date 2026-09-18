@@ -55,6 +55,9 @@ import Checkout from "./store/checkout";
 import BagItems from "./store/bag-items";
 import InstallGuide from "./store/install-guide";
 import CommunityBoard from "./store/community";
+import TaskInbox from "./store/task-inbox";
+import EmailChanges from "./store/email-changes";
+import ProductInitiatives from "./store/initiatives";
 import TeamBoard, { ModerationQueue } from "./store/team-board";
 import TransactionHub from "./store/transaction-hub";
 import { PaymentConfirmation, TabPayment } from "./store/payment-forms";
@@ -172,7 +175,7 @@ export default function Pilot() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [view, setView] = useState("account"),
-    [tab, setTab] = useState("overview"),
+    [tab, setTab] = useState("attention"),
     [category, setCategory] = useState("All"),
     [search, setSearch] = useState(""),
     [cart, setCart] = useState<Record<string, number>>({}),
@@ -186,6 +189,7 @@ export default function Pilot() {
     [memberFilter, setMemberFilter] = useState("all"),
     [uploading, setUploading] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState("pending");
+  const [emailTarget,setEmailTarget]=useState<Row|null>(null);
   const [gearRevision, setGearRevision] = useState(0);
   const [gearId, setGearId] = useState(""),
     [pricingId, setPricingId] = useState(""),
@@ -915,10 +919,18 @@ export default function Pilot() {
             </Button>
           </div>
         </div>
+        <div className="admin-section-select"><Field label="Management section">
+          <NativeSelect value={tab} onChange={e=>setTab(e.target.value)}>
+            {['attention','overview','access','trials','transactions','inventory','pricing','pickups','payments','members','team','community','activity','settings'].map(t=><option key={t} value={t}>{t==='attention'?'Needs attention':t==='access'?'Email access':t[0].toUpperCase()+t.slice(1)}</option>)}
+          </NativeSelect>
+        </Field></div>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="admin-tabs">
             {[
+              "attention",
               "overview",
+              "access",
+              "trials",
               "transactions",
               "inventory",
               "pricing",
@@ -931,7 +943,7 @@ export default function Pilot() {
               "settings",
             ].map((t) => (
               <TabsTrigger key={t} value={t}>
-                {t[0].toUpperCase() + t.slice(1)}
+                {t === "attention" ? "Needs attention" : t === "access" ? "Email access" : t === "trials" ? "Trials" : t[0].toUpperCase() + t.slice(1)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -949,7 +961,13 @@ export default function Pilot() {
               </Button>
             </div>
           ) : null}
-          {tab === "overview" ? (
+          {tab === "attention" ? (
+            <TaskInbox member={member} onAction={(destination,target,person)=>{if(destination==="requests"){navigate("requests");return}setTab(destination);if(destination==="members")setMemberSearch(person);if(destination==="inventory"){const p=products.find(p=>p.id===target);if(p?.category==="Gear")setGearId(target);else setInventorySearch(p?.name||person)}}}/>
+          ) : tab === "access" ? (
+            <EmailChanges member={member} admin targetMember={emailTarget||undefined}/>
+          ) : tab === "trials" ? (
+            <ProductInitiatives member={member} admin onProduct={id=>{const p=products.find(p=>p.id===id);if(p?.category==="Gear"){setGearId(id);setTab("inventory")}else if(p){setTab("inventory");open("product",p)}else{setInventorySearch("");setTab("inventory");refresh()}}}/>
+          ) : tab === "overview" ? (
             overview()
           ) : tab === "transactions" ? (
             <TransactionHub
@@ -1350,6 +1368,7 @@ export default function Pilot() {
                         >
                           Edit member
                         </Button>
+                        {!m.isOwner && (owner || m.role!=="admin")?<Button variant="ghost" onClick={()=>{setEmailTarget(m);setTab("access")}}>Change email</Button>:null}
                         <Button
                           variant="outline"
                           onClick={() =>
@@ -1647,6 +1666,7 @@ export default function Pilot() {
             </Button>
           )}
         </section>
+        <EmailChanges member={member}/>
         <section className="panel">
           <ThemePicker />
         </section>
