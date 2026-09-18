@@ -85,6 +85,7 @@ try {
     "PRODUCT-SCHEMA.sql",
     "SECURITY-SCHEMA.sql",
     "BETA-SCHEMA.sql",
+  "ROUNDS-SCHEMA.sql",
   ])
     await db.exec(
       readFileSync(file, "utf8")

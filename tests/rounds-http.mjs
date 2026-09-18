@@ -45,6 +45,7 @@ try {
     "PRODUCT-SCHEMA.sql",
     "SECURITY-SCHEMA.sql",
     "BETA-SCHEMA.sql",
+  "ROUNDS-SCHEMA.sql",
   ])
     await db.exec(
       readFileSync(f, "utf8")
@@ -261,7 +262,43 @@ try {
     ).n === 80,
     "All matrix options saved in D1",
   );
-  console.log("Worker gear and permission checks: " + checks);
+  // Exercise the new routes on the compiled Worker, not just imported services.
+  const ops = (who, body, suffix = '', headers = {}) => request(cookies[who] || '', body, '/api/operations' + suffix, headers);
+  for (const kind of ['inbox', 'emailAdmin', 'initiatives&shop=gear&admin=true']) {
+    check((await ops('buyer', undefined, '?kind=' + kind)).status === 403, 'Member blocked from ' + kind);
+    check((await ops('locked', undefined, '?kind=' + kind)).status === 403, 'Unverified admin blocked from ' + kind);
+  }
+  check((await ops('', undefined, '?kind=email')).status === 401, 'Email request history requires a session');
+  check((await ops('owner', undefined, '?kind=inbox')).status === 200, 'Verified admin inbox renders on D1');
+  const emailBody = {action:'emailAdminRequest',memberId:'buyer',email:'updated@example.test',confirmEmail:'updated@example.test',requestId:crypto.randomUUID()};
+  check((await ops('owner', emailBody, '', {Origin:'https://attacker.test'})).status === 403, 'Operations rejects cross-origin mutations');
+  check((await ops('owner', {...emailBody,note:'x'.repeat(15000)})).status === 413, 'Operations limits body size');
+  check((await ops('locked', emailBody)).status === 403, 'Email management requires current MFA');
+  const created = await ops('owner', emailBody), emailId = (await created.json()).id;
+  check(created.status === 200 && emailId, 'Admin can initiate verified-address workflow');
+  const er = () => db.prepare('SELECT * FROM email_change_requests WHERE id=?').bind(emailId).first();
+  const generated = await ops('owner', {action:'emailCode',id:emailId,version:0,requestId:crypto.randomUUID()}), code = (await generated.json()).code;
+  check(generated.status === 200 && /^[a-f0-9]{32}$/.test(code), 'Strong one-time email code issued');
+  const list = await ops('buyer',undefined,'?kind=email'), listing = await list.json();
+  check(list.headers.get('Cache-Control')?.includes('no-store') && listing.records.length === 1 && !('code_hash' in listing.records[0]), 'Private history omits code material and cannot be cached');
+  check((await ops('buyer',{action:'emailVerify',id:emailId,version:(await er()).version,code,requestId:crypto.randomUUID()})).status === 200, 'Member verifies new address through Worker');
+  check((await ops('buyer',{action:'emailComplete',id:emailId,version:(await er()).version,requestId:crypto.randomUUID()})).status === 403, 'Member cannot approve own identity change');
+  check((await ops('owner',{action:'emailApprove',id:emailId,version:(await er()).version,note:'Fixture identity confirmed',requestId:crypto.randomUUID()})).status === 200, 'Admin approval keeps policy sync separate');
+  const complete = {action:'emailComplete',id:emailId,version:(await er()).version,note:'Fixture policy updated',identityChecked:true,newAddressAllowed:true,oldAddressRemoved:true,requestId:crypto.randomUUID()};
+  const finished = await Promise.all([ops('owner',complete),ops('owner',complete)]);
+  check(finished.every(r=>r.status===200) && (await db.prepare('SELECT COUNT(*) n FROM member_email_history WHERE member_id=?').bind('buyer').first()).n === 1, 'Concurrent completion retries produce exactly one history entry');
+  check((await ops('buyer',undefined,'?kind=email')).status === 401, 'Changed member session revoked immediately');
+  check((await db.prepare('SELECT COUNT(*) n FROM orders WHERE member_id=?').bind('buyer').first()).n === 1, 'Identity change preserves existing purchase association');
+  await db.prepare("INSERT INTO item_requests(id,member_id,shop,title,body,status,created_at,updated_at) VALUES('http-request','owner','snacks','Trial snack','Sample trial request','open',?,?)").bind(Date.now(),Date.now()).run();
+  const trialBody={action:'initiativeCreate',requestIdSource:'http-request',kind:'trial',category:'Snacks',version:0,endsAt:Date.now()+86400000,note:'Small trial for fixture',requestId:crypto.randomUUID()};
+  check((await ops('locked',trialBody)).status===403,'Trial creation requires MFA');
+  const trials=await Promise.all([ops('owner',trialBody),ops('owner',{...trialBody,requestId:crypto.randomUUID()})]);
+  check(trials.filter(r=>r.status===200).length===1 && trials.filter(r=>r.status===409).length===1,'Concurrent request conversion creates exactly one linked product');
+  const linked=await db.prepare('SELECT * FROM product_initiatives WHERE request_id=?').bind('http-request').first();
+  await db.prepare('UPDATE products SET active=1,price=100,tax_bp=0,stock=4 WHERE id=?').bind(linked.product_id).run();
+  check((await ops('owner',{action:'initiativeOpen',id:linked.id,version:0,requestId:crypto.randomUUID()})).status===200,'Trial opens with atomic opening-stock snapshot');
+  check((await db.prepare('SELECT opening_qty FROM product_initiatives WHERE id=?').bind(linked.id).first()).opening_qty===4,'D1 opening quantity uses linked product');
+  console.log("Worker gear and operations checks: " + checks);
 } finally {
   await mf.dispose();
 }

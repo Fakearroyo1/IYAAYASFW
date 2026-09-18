@@ -90,7 +90,7 @@ export async function communityPage(db: DB, m: Row, q: Row, admin = false) {
     const tail = pageTail(q.cursor, "r");
     const found = await rows(
       db,
-      "SELECT r.*,m.name author_name,COALESCE(v.likes,0) likes,COALESCE(v.dislikes,0) dislikes,COALESCE(mine.value,0) my_vote FROM item_requests r JOIN members m ON m.id=r.member_id LEFT JOIN (SELECT request_id,SUM(value=1) likes,SUM(value=-1) dislikes FROM request_votes GROUP BY request_id) v ON v.request_id=r.id LEFT JOIN request_votes mine ON mine.request_id=r.id AND mine.member_id=? WHERE r.shop=? AND r.removed=0" +
+      "SELECT r.*,pi.id initiative_id,pi.state initiative_state,m.name author_name,COALESCE(v.likes,0) likes,COALESCE(v.dislikes,0) dislikes,COALESCE(mine.value,0) my_vote FROM item_requests r JOIN members m ON m.id=r.member_id LEFT JOIN product_initiatives pi ON pi.request_id=r.id LEFT JOIN (SELECT request_id,SUM(value=1) likes,SUM(value=-1) dislikes FROM request_votes GROUP BY request_id) v ON v.request_id=r.id LEFT JOIN request_votes mine ON mine.request_id=r.id AND mine.member_id=? WHERE r.shop=? AND r.removed=0" +
         tail.sql +
         " ORDER BY r.created_at DESC,r.id DESC LIMIT 31",
       m.id,

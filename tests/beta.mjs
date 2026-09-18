@@ -42,6 +42,7 @@ for (const f of [
   "PRODUCT-SCHEMA.sql",
   "SECURITY-SCHEMA.sql",
   "BETA-SCHEMA.sql",
+  "ROUNDS-SCHEMA.sql",
 ])
   sqlite.exec(fs.readFileSync(f, "utf8"));
 class Statement {
@@ -587,7 +588,9 @@ const beforeMigration = JSON.stringify(
   sqlite.prepare("SELECT * FROM members ORDER BY id").all(),
 );
 sqlite.exec(fs.readFileSync("BETA-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("ROUNDS-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("BETA-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("ROUNDS-SCHEMA.sql", "utf8"));
 check(
   JSON.stringify(sqlite.prepare("SELECT * FROM members ORDER BY id").all()) ===
     beforeMigration,

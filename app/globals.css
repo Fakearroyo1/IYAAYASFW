@@ -711,7 +711,8 @@ footer {
 }
 .stat {
   padding: 22px;
-  background: white;
+  background: var(--card);
+  color: var(--card-foreground);
   border: 1px solid var(--border);
   border-radius: 20px;
 }
@@ -3157,3 +3158,51 @@ fieldset:disabled {
   .install-guide > button { width: 100%; }
   .bag-right { min-width: 106px; }
 }
+
+.shopping-balance { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 16px 20px; margin: 0 0 24px; font-size: 14px; color: var(--muted-foreground); }
+.shopping-balance > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.shopping-balance strong { color: var(--foreground); font-variant-numeric: tabular-nums; }
+.shopping-balance > button { margin-left: auto; }
+@media (max-width: 580px) { .shopping-balance { display: grid; grid-template-columns: 1fr 1fr; padding: 16px; gap: 12px 18px; } .shopping-balance > button { margin-left: 0; justify-self: start; } .shopping-balance > span { align-items: baseline; } }
+/* Operations and community follow the shared theme and spacing rhythm. */
+.morning-brief { display: grid; gap: 24px; margin-bottom: 22px; }
+.brief-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 20px; }
+.brief-metrics > * { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 6px; padding: 0; }
+.brief-metrics span { color: var(--muted-foreground); font-size: 14px; }
+.brief-metrics strong { font-size: 26px; color: var(--foreground); font-weight: 600; font-variant-numeric: tabular-nums; }
+.operations-list { display: grid; }
+.operation-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; padding: 20px 0; border-bottom: 1px solid var(--border); text-align: left; }
+.operation-row > span { min-width: 0; }
+.operation-row strong, .operation-row small { display: block; overflow-wrap: anywhere; }
+.operation-row small { color: var(--muted-foreground); margin-top: 5px; font-size: 13px; }
+.operation-summary { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; flex-shrink: 0; }
+.task-dialog { width: 700px !important; max-width: calc(100vw - 32px) !important; }
+.task-dialog .compact-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.task-dialog .compact-stats .stat { padding:18px; }
+.task-dialog form, .email-changes form { padding-block: 18px; }
+.task-dialog p, .email-changes p { margin-block: 10px; }
+.task-history { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 20px; }
+.task-history article { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.task-history article p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-history small { color: var(--muted-foreground); }
+.detail-pairs { display: grid; gap: 12px; margin: 20px 0; }
+.detail-pairs dt { font-size: 13px; color: var(--muted-foreground); }
+.detail-pairs dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.policy-checklist { display: grid; gap: 14px; }
+.code-display { padding: 16px; background: var(--muted); border-radius: 12px; overflow-wrap: anywhere; font-family: monospace; }
+.initiative-section { margin-block: 26px; }
+.initiative-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.initiative-card p { margin-block: 12px; overflow-wrap: anywhere; }
+.initiative-card .inline-actions { margin-top: 20px; flex-wrap: wrap; }
+.interest-total { color: var(--muted-foreground); }
+.trial-feedback { padding-block: 20px; }
+.loss-details { margin-block: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; }
+.loss-details summary { cursor: pointer; min-height: 30px; font-weight: 600; }
+@media(max-width:800px) { .brief-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .initiative-grid { grid-template-columns:1fr; } }
+@media(max-width:580px) { .operation-row { gap: 12px; align-items:flex-start; } .operation-summary { max-width:44%; } .operation-row strong { font-size:14px; } .morning-brief { padding:20px; } .task-dialog .compact-stats { grid-template-columns:1fr 1fr; } }
+
+/* The expanded admin workspace uses a compact grid and a mobile section picker. */
+.admin-tabs { display:grid !important; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); width:100%; max-height:none; overflow:visible; padding:4px; }
+.admin-tabs [data-slot="tabs-trigger"] { width:100%; min-width:0; padding:8px; flex:none; }
+.admin-section-select { display:none; }
+@media(max-width:580px) { .admin-tabs { display:none !important; } .admin-section-select { display:grid; margin-bottom:20px; } }
