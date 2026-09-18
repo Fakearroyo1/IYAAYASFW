@@ -44,6 +44,8 @@ export default {
       "/api/product-images",
       "/api/community",
       "/api/operations",
+      "/api/roadmap",
+      "/api/profile-images",
     ].includes(path);
     let response: Response;
     const actionHeader =

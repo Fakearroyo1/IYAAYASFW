@@ -7,7 +7,7 @@ import {NativeSelect} from '@/components/ui/native-select';
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Field,money,date,type Row} from './shared';
 import {useOperations,OperationsFeedback,operationsRead} from './operations-action';
-const labels:Record<string,string>={payment:'Payments',tab:'Tabs',email:'Email changes',reset:'Password resets',stock:'Stock',report:'Moderation',request:'Item requests',team:'Team questions',pickup:'Gear fulfillment',trial:'Trial reviews',adjustment:'Adjustments'};
+const labels:Record<string,string>={payment:'Payments',tab:'Tabs',email:'Email changes',reset:'Password resets',stock:'Stock',report:'Moderation',request:'Item requests',team:'Team questions',pickup:'Gear fulfillment',trial:'Trial reviews',adjustment:'Adjustments',guest:'Guest fulfillment',profile:'Profile approvals','profile-report':'Profile reports'};
 export default function TaskInbox({member,onAction}:{member:Row;onAction:(tab:string,target:string,person:string)=>void}){
  const [data,setData]=useState<Row>({records:[],admins:[],counts:[],brief:{},events:[]}),[filter,setFilter]=useState('open'),[type,setType]=useState(''),[search,setSearch]=useState(''),[selected,setSelected]=useState(''),[error,setError]=useState('');
  const sequence=useRef(0);

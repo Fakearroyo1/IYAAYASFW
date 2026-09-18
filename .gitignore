@@ -55,3 +55,7 @@ next-env.d.ts
 
 /public/brand/logo.png
 /public/favicon.svg
+
+/gear/public/brand-mark.png
+/gear/wrangler.deploy.json
+/gear/.sites-runtime/

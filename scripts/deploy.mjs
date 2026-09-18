@@ -59,7 +59,28 @@ for (const args of [
     "--config",
     configPath,
   ],
-  ["d1", "execute", "iyaayasfw-supply-db", "--remote", "--file", "ROUNDS-SCHEMA.sql", "--config", configPath],
+  [
+    "d1",
+    "execute",
+    "iyaayasfw-supply-db",
+    "--remote",
+    "--file",
+    "ROUNDS-SCHEMA.sql",
+    "--config",
+    configPath,
+  ],
+  ...["GUEST-SCHEMA.sql", "AUTOPILOT-SCHEMA.sql", "REWARDS-SCHEMA.sql"].map(
+    (file) => [
+      "d1",
+      "execute",
+      "iyaayasfw-supply-db",
+      "--remote",
+      "--file",
+      file,
+      "--config",
+      configPath,
+    ],
+  ),
   ["deploy", "--config", configPath],
 ]) {
   const result = spawnSync(process.execPath, [wrangler, ...args], {

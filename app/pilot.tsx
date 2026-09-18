@@ -18,6 +18,7 @@ import {
   CircleHelp,
   ReceiptText,
   Download,
+  Medal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,9 @@ import {
 } from "@/lib/pilot/cart";
 import PricingHub from "./store/pricing-hub";
 import GearManager from "./store/gear-manager";
+import GuestManager from "./store/guest-manager";
+import InventoryAutopilot, {MonthClose} from "./store/inventory-autopilot";
+import Rewards from "./store/rewards";
 import PickupBoard from "./store/pickup-board";
 import Checkout from "./store/checkout";
 import BagItems from "./store/bag-items";
@@ -241,6 +245,7 @@ export default function Pilot() {
             "account",
             "admin",
             "requests",
+            "recognition",
           ].includes(requested)
             ? requested
             : "snacks";
@@ -921,7 +926,7 @@ export default function Pilot() {
         </div>
         <div className="admin-section-select"><Field label="Management section">
           <NativeSelect value={tab} onChange={e=>setTab(e.target.value)}>
-            {['attention','overview','access','trials','transactions','inventory','pricing','pickups','payments','members','team','community','activity','settings'].map(t=><option key={t} value={t}>{t==='attention'?'Needs attention':t==='access'?'Email access':t[0].toUpperCase()+t.slice(1)}</option>)}
+            {['attention','overview','access','trials','transactions','inventory','planning','month','guest','rewards','pricing','pickups','payments','members','team','community','activity','settings'].map(t=><option key={t} value={t}>{t==='attention'?'Needs attention':t==='access'?'Email access':t==='planning'?'Inventory planning':t==='month'?'Close month':t==='guest'?'Guest gear':t==='rewards'?'Murley Bucks':t[0].toUpperCase()+t.slice(1)}</option>)}
           </NativeSelect>
         </Field></div>
         <Tabs value={tab} onValueChange={setTab}>
@@ -933,6 +938,10 @@ export default function Pilot() {
               "trials",
               "transactions",
               "inventory",
+              "planning",
+              "month",
+              "guest",
+              "rewards",
               "pricing",
               "pickups",
               "payments",
@@ -943,7 +952,7 @@ export default function Pilot() {
               "settings",
             ].map((t) => (
               <TabsTrigger key={t} value={t}>
-                {t === "attention" ? "Needs attention" : t === "access" ? "Email access" : t === "trials" ? "Trials" : t[0].toUpperCase() + t.slice(1)}
+                {t === "attention" ? "Needs attention" : t === "access" ? "Email access" : t === "trials" ? "Trials" : t === "planning" ? "Inventory planning" : t === "month" ? "Close month" : t === "guest" ? "Guest gear" : t === "rewards" ? "Murley Bucks" : t[0].toUpperCase() + t.slice(1)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -967,6 +976,14 @@ export default function Pilot() {
             <EmailChanges member={member} admin targetMember={emailTarget||undefined}/>
           ) : tab === "trials" ? (
             <ProductInitiatives member={member} admin onProduct={id=>{const p=products.find(p=>p.id===id);if(p?.category==="Gear"){setGearId(id);setTab("inventory")}else if(p){setTab("inventory");open("product",p)}else{setInventorySearch("");setTab("inventory");refresh()}}}/>
+          ) : tab === "guest" ? (
+            <GuestManager onProduct={id=>{setGearId(id);setTab("inventory")}} onPayments={()=>setTab("payments")} onTransactions={()=>setTab("transactions")} onPickups={()=>setTab("pickups")}/>
+          ) : tab === "planning" ? (
+            <InventoryAutopilot/>
+          ) : tab === "month" ? (
+            <MonthClose/>
+          ) : tab === "rewards" ? (
+            <Rewards admin/>
           ) : tab === "overview" ? (
             overview()
           ) : tab === "transactions" ? (
@@ -1590,6 +1607,7 @@ export default function Pilot() {
             Email the store team
           </a>
         </div>
+        <div className="notice recognition-account"><div><strong>Murley Bucks & your profile</strong><p>Earn recognition, choose badges, and join the Support Board.</p></div><Button variant="secondary" onClick={()=>navigate("recognition")}>Open recognition</Button></div>
         <InstallGuide />
         <div className="balance-grid">
           <section className="balance-card">
@@ -1974,6 +1992,7 @@ export default function Pilot() {
               ? [["requests", "Requests", MessageSquare]]
               : []),
             ["account", "My account", Wallet],
+            ["recognition", "Recognition", Medal],
             ...(admin ? [["admin", "Manage", SlidersHorizontal]] : []),
           ].map(([v, label, Icon]: any) => (
             <button
@@ -2053,6 +2072,8 @@ export default function Pilot() {
           )
         ) : view === "requests" ? (
           <CommunityBoard member={member} admin={!!data.adminVerified} />
+        ) : view === "recognition" ? (
+          <Rewards/>
         ) : view === "account" ? (
           member ? (
             account()

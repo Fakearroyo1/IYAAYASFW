@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Field, money, type Row } from "./shared";
+import {GearDelivery} from "./guest-manager";
 import { Performance } from "./pricing-hub";
 import { suggestedPrice, priceMargin } from "@/lib/pilot/pricing";
 
@@ -883,7 +884,7 @@ export default function GearManager({
           ) : null}
         </section>
       ) : null}
-      {p.id ? <Performance p={p} data={data} /> : null}
+      {p.id ? <><GearDelivery productId={p.id}/><Performance p={p} data={data} /></> : null}
     </section>
   );
 }
