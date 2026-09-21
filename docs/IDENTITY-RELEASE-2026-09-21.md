@@ -182,3 +182,55 @@ New active whitelist entries can enroll immediately through their invitation; no
 rollout list or deployment change is required. Google fresh proof, Android/desktop,
 Mason migration, real admin expiry and deployed commerce acceptance retain their
 recorded pending/provider-blocked status.
+
+## Google preauthorization activated for imported members
+
+The owner explicitly requested live testing of Google automatic first association and
+application to the newly imported accounts. Deployment `1bf62b43-27bb-4eba-ac14-d4e45828e609`
+reached 100% at 2026-09-21T20:49:48Z, running commit
+`79102ba79f64ff4dc230a8dd424d2ec5103eec09` and Worker version
+`fac5a1d1-e61b-4bdf-9568-3b65c338c976`. The version tag matches that exact commit.
+Prepared configuration SHA-256:
+`62118367892296f18d9f793d7d557a02918f2488e04cf7153a2784400d75c72d`.
+
+Readback retained all 25 bindings, original D1/R2, secret bindings, observability and
+all four main custom domains. The only setting change was
+`IDENTITY_GOOGLE_BOOTSTRAP_ENABLED: false → true`. Main/gear workers.dev and preview
+URLs remain disabled. Google fresh account-change proof remains disabled separately.
+The checked release preparer now preserves the approved live bootstrap setting on
+later releases and requires explicit owner evidence for an override. All other
+member-beta and full-release checks remain intact.
+
+The read-only import audit found 57 active imported members: 45 with explicit,
+pending, unexpired, epoch-current Google preauthorizations, all for Gmail addresses;
+12 without a Google grant. The same counts and grants remained after deployment.
+No reimport, grant renewal, credential fabrication or migration was performed.
+Those 45 members can choose Google on normal sign-in and use the exact preauthorized
+account. The remaining 12 need a private invitation or an explicitly supplied Google
+address. The active whitelist remains authoritative; a roster email alone does not
+claim membership. Google-authoritative verified Gmail/Workspace proof, immutable
+provider subject, one-use grants and transactional state checks remain required.
+
+Local validation passed typecheck/build, 37 manual-release checks, 143 importer checks
+and 116 compiled identity HTTP checks. New tests cover staged imports becoming usable
+without reimport, exact existing member binding, consumed grants, and denial for an
+unknown identity, an unpreauthorized roster email, or a disabled member. Exact-commit
+Linux CI run [74](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35653004671)
+passed the complete application suite, dependency audit and secret scan. The release
+dry run passed before deployment. All 12 live route checks passed at 20:50 UTC,
+including public pages, auth entry, password fallback, anonymous API denial, separate
+host isolation, private invitation entry, administrator Access and gear.
+
+Fresh encrypted pre/post-deployment backups at 20:43/20:51 UTC each captured 102 tables
+and 10 views and passed isolated restore, all 21 image checks and stale-identity
+canaries. Comparing all 112 database objects at the same clock found changes only in
+`auth_limits` and `identity_flows`, consistent with route probes. Member records,
+credentials, grants, financial history and other stored records matched. All 19
+previously unexpired sessions retained their member and creation time. The existing
+protected key was used; password-manager custody/retrieval was previously confirmed
+by the owner. Production was not restored.
+
+This establishes deployment and synthetic coverage. A real first sign-in using one
+of the imported Google preauthorizations is now available for member testing; no
+such real-provider result is claimed by this release. Other pending device/admin/
+commerce acceptance items above retain their recorded status.
