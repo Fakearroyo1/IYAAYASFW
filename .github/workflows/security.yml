@@ -31,6 +31,7 @@ jobs:
       - run: node tests/identity.mjs
       - run: node tests/identity-protocols.mjs
       - run: node tests/identity-edge-cases.mjs
+      - run: node tests/identity-release.mjs
       - run: node tests/pilot.mjs
       - run: node tests/beta.mjs
       - run: node tests/rounds-1-2.mjs

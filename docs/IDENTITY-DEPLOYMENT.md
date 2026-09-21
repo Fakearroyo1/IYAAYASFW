@@ -1,0 +1,55 @@
+# Controlled identity deployment
+
+Automatic main/gear deploy commands remain held in Cloudflare. `pnpm run deploy`
+continues to require its existing main-only security preflight; it is not the
+command for this manual candidate. Never label a candidate branch as main.
+
+`scripts/prepare-identity-release.mjs` prepares an explicit manual configuration
+from the built Worker and a recent read-only Cloudflare API snapshot. The snapshot
+is private, ignored, contains no secret values and records successful complete
+API responses for runtime binding metadata, both Access applications/policies,
+organization MFA, Turnstile, private R2, Pages absence, disabled alternate URLs,
+custom domains and both held build triggers. Include the actual CI result for the
+candidate SHA and completed protected recovery evidence. The source commit must
+be clean and the observation no older than ten minutes. Do not fabricate evidence.
+
+Run `node scripts/prepare-identity-release.mjs <private-snapshot.json> owner-smoke
+<commit>` on one line. This only writes `dist/server/identity-release.json`. Review
+the prepared config and use the installed Wrangler's deploy dry run. The prepared
+config retains runtime variables and secrets, uses the original D1/R2, sets all
+three new methods on for the owner stage, keeps automatic email bootstrap off,
+and adds only the four exact approved hosts.
+
+Before the first live deployment:
+
+1. Refresh and verify the protected current backup if the stored data changed.
+2. Apply `IDENTITY-SCHEMA.sql` additively to the existing D1 after its existing
+   schemas. The protected restore proved repeated application and shared-gear
+   compatibility. Do not replay an initial schema or production data dump.
+3. Save only independently verified Access issuer/subject mappings, explicitly
+   authorized by the owner. Recheck each target's existing active admin role.
+   Jake alone receives `identity_owner=1`. No incoming email auto-provisions one.
+4. Deploy the exact prepared configuration with the project's installed Wrangler,
+   retaining secrets. Record commit, config checksum, deployment/version IDs and
+   route readback. Disable invocation URL logs before any provider callbacks.
+5. Verify anonymous host/API denial, password fallback and read-only commerce,
+   then perform the real owner provider, phone, admin-MFA and recovery checklist.
+
+`owner-smoke` preserves the old apex administration path while testing new member
+methods only for Jake. It is a temporary gate, not the requested final audience.
+The owner deferred Mason's test because he is unavailable; his subject mapping
+must remain pending until verified. Keep his established permissions unchanged.
+
+`all-approved` preparation additionally requires both explicit admin mappings and
+recorded passing Google, Microsoft, iPhone/Safari, Android/Chrome, desktop,
+administrator MFA denial, owner recovery and deployed legacy-commerce checks.
+Only then switch stages and verify the roster-wide result. Do not remove a failed
+method from the checklist and call this phase complete.
+
+For rollback, retain additive tables and current data. Disable a failed method
+or return to the owner stage using a newly checked configuration. Before rolling
+back to pre-identity code, remove the new auth/register/admin Worker domains so
+old routing cannot expose application APIs there. Keep the Access application
+and original apex/gear domains. Do not restore an older data snapshot as a code
+rollback. Do not restore automatic deployment while its apex-only route guard
+and deploy script are incompatible with the active identity release configuration.

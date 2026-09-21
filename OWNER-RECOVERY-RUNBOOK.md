@@ -6,7 +6,7 @@ Jake is the sole recovery custodian. Recovery does not depend on the snackbar ap
 
 On September 21, 2026, the owner generated a key in a private local form, saved it in the password manager, then independently retrieved and verified that key. An encrypted D1 snapshot and encrypted R2 archive were restored into memory only: 88 application tables, 10 views and all 21 objects matched; 21 database image references resolved. Repeating the additive identity schema preserved every prior table/view digest. A containment rehearsal affected only the in-memory copy and revoked pending access. Production was not restored or modified by the drill.
 
-Cloudflare/GitHub/provider emergency sign-in using an alternate secured method still needs a real owner rehearsal. Having recovery methods configured is not evidence that this step passed.
+After being asked to rehearse independent Cloudflare, GitHub, Google and Microsoft access using an alternate secured method in another browser session, the owner reported "Account access is good" on September 21, 2026. This is owner-attested account recovery evidence; the agent did not observe the private authentication steps. Application administrator MFA denial remains a separate release check.
 
 ## Locate and verify backups
 

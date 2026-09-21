@@ -1,6 +1,6 @@
 import * as oidc from 'openid-client';
 import {generateAuthenticationOptions,generateRegistrationOptions,verifyAuthenticationResponse,verifyRegistrationResponse,type AuthenticationResponseJSON,type RegistrationResponseJSON} from '@simplewebauthn/server';
-import {config,fail,random,digest,sql,one,atomic,guard,flowGuard,member,all,matchEmail,type IdentitySettings,type Method,type Flow,type Credential} from './common';
+import {config,fail,random,digest,sql,one,atomic,guard,flowGuard,member,all,matchEmail,audit,type IdentitySettings,type Method,type Flow,type Credential} from './common';
 
 export const CONSUMER_TENANT='9188040d-6c67-4c5b-b112-36a304b66dad';
 export const ISSUERS={google:'https://accounts.google.com',microsoft:`https://login.microsoftonline.com/${CONSUMER_TENANT}/v2.0`};
@@ -73,7 +73,13 @@ export async function finishPasskey(db:D1Database,env:IdentitySettings,f:Flow,ce
   const credential=await one<Credential>(db,"SELECT * FROM identity_credentials WHERE credential_id=? AND kind='passkey' AND status='active' AND rp_id=?",assertion.id,c.domain);if(!credential)fail();
   // Discoverable authentication must bind the returned opaque user handle too.
   if(assertion.response.userHandle!==Buffer.from(credential!.user_handle!,'hex').toString('base64url'))fail();
-  const result=await verifyAuthenticationResponse({response:assertion,expectedChallenge:ceremony.secret.challenge,expectedOrigin:c.auth,expectedRPID:c.domain,requireUserVerification:true,credential:{id:credential!.credential_id!,publicKey:new Uint8Array(Buffer.from(credential!.public_key!,'base64url')),counter:credential!.counter}});
+  const result=await verifyAuthenticationResponse({response:assertion,expectedChallenge:ceremony.secret.challenge,expectedOrigin:c.auth,expectedRPID:c.domain,requireUserVerification:true,credential:{id:credential!.credential_id!,publicKey:new Uint8Array(Buffer.from(credential!.public_key!,'base64url')),counter:credential!.counter}}).catch(async error=>{
+    // The library checks the counter before the signature. Record an untrusted
+    // rejected attempt; do not infer cloning or automatically revoke a method.
+    const counterRejected=error instanceof Error&&/^Response counter value \d+ was lower than expected \d+$/.test(error.message);
+    await audit(db,'authentication-attempt',counterRejected?'passkey_counter_rejected':'passkey_assertion_rejected',credential!.member_id,{credentialId:credential!.id,verified:false}).run();
+    fail('This passkey could not be verified. Try another linked method or contact Jake.',403);
+  });
   if(!result.verified)fail();
   await atomic(db,[flowGuard(db,f),guard(db,"EXISTS(SELECT 1 FROM identity_credentials WHERE id=? AND status='active' AND counter=?)",credential!.id,credential!.counter),sql(db,'UPDATE identity_credentials SET counter=?,backed_up=?,device_type=?,last_used_at=? WHERE id=?',result.authenticationInfo.newCounter,result.authenticationInfo.credentialBackedUp?1:0,result.authenticationInfo.credentialDeviceType,Date.now(),credential!.id)]);
   return{proof:null,credential:credential!};

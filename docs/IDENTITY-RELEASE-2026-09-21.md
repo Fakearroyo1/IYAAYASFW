@@ -11,7 +11,7 @@
 | Passkeys | MOCK-ONLY | Real iPhone/Safari, Android/Chrome and desktop flows; both phones are available |
 | Administrator host | MOCK-ONLY / configuration verified | Real MFA success, cancellation/denial/expiration and principal provisioning |
 | Backup recovery | REAL TESTED | Refresh protected snapshot before migration if data changes |
-| Owner emergency account control | BLOCKED | Independent alternate-method sign-in to Cloudflare/GitHub/provider consoles |
+| Owner emergency account control | REAL TESTED / owner-attested | Owner reported account access good after the independent recovery rehearsal request; private authentication was not observed by the agent |
 | Legacy password and commerce | Locally tested | Final candidate CI and deployed owner smoke |
 | Sixty concurrent shared-NAT logins | MOCK-ONLY / compiled runtime passed | Final CI and deployed smoke; no production load test |
 | Roster-wide enablement | BLOCKED | All required real methods, admin, load and recovery checks |
@@ -43,7 +43,7 @@ At 02:37 UTC, independent key retrieval and isolated memory restore passed. Ever
 ## Candidate validation
 
 - Typecheck, main build and gear dry build passed.
-- Identity state/import: 57 checks; signed synthetic OIDC/WebAuthn: 55; compiled Worker host/CSRF/admin/fresh-addition flow: 54; rollout/method-disable/last-method races: 10; setup/recovery containment races: 24.
+- Identity state/import: 62 checks, including simultaneous invite completion/handoff redemption and sixty-row preview; signed synthetic OIDC/WebAuthn: 56, including counter-rejection audit; compiled Worker host/CSRF/admin/fresh-addition flow: 57, including changed-proof confirmation denial; rollout/method-disable/last-method races: 10; setup/recovery containment races: 24.
 - Existing suites passed locally: pilot 74; beta 63; rounds 1–2 48, rounds 3–4 61, rounds 5–7 86; earning 77; redemptions; profile experience; admin experience 80; payment handoff; rewards UI 30; UI contracts 28; bounded HTTP 8; experience HTTP 104; rounds HTTP 38; roadmap HTTP 61; authentication 96; security 62; hardening 589; image parsers 4; backup crypto 4.
 - Some esbuild-based tests required execution outside the Windows sandbox after parent-directory reads were denied. Assertions and production code were not weakened.
 - With sixty distinct synthetic members and six requests in flight behind one IP, the former 40/IP limit accepted 40 and rejected 20. After raising the IP limit to 180/15 minutes, the full sixty-concurrent test accepted all 60 with correct member binding; per-account 10/15-minute rejection remained effective. Candidate local p50 7,827 ms, p95/max 7,829 ms; the full check including subsequent abuse attempts took 12,576 ms. Initial Windows transport failures were resolved by consuming response bodies and performing database verification after the timed request burst. The same correctness assertions remain. No production password-hashing change was made. These measurements do not establish a production SLO.

@@ -73,7 +73,7 @@ export async function storeEnrollmentProof(db:D1Database,f:Flow,proof:ProviderPr
 export async function finishEnrollment(db:D1Database,f:Flow,label:string){
  const g=await grantFor(db,f);if(f.status!=='proven'||!f.proof||!f.proof_at||f.proof_at<Date.now()-300000)fail('This proof expired. Start again.',409);
  const proof=JSON.parse(f.proof!) as ProviderProof|PasskeyProof,insert=credentialInsert(db,g.member_id,proof,g.kind+':'+g.id,label||undefined);
- const conditions=[flowGuard(db,f),memberGuard(db,g.member_id,g.epoch),grantGuard(db,g)];
+ const conditions=[flowGuard(db,f),guard(db,'EXISTS(SELECT 1 FROM identity_flows WHERE id=? AND proof=?)',f.id,f.proof),memberGuard(db,g.member_id,g.epoch),grantGuard(db,g)];
  if(g.source_session)conditions.push(liveSessionGuard(db,g.source_session,g.member_id));
  if(g.proof_credential)conditions.push(guard(db,"EXISTS(SELECT 1 FROM identity_credentials WHERE id=? AND member_id=? AND status='active')",g.proof_credential,g.member_id));
  if(proof.kind!=='passkey')conditions.push(guard(db,"NOT EXISTS(SELECT 1 FROM identity_requests WHERE issuer=? AND subject=? AND state IN ('rejected','blocked'))",proof.issuer,proof.subject));

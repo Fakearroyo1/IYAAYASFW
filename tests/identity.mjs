@@ -44,12 +44,17 @@ const fid=await F.claimInvite(db,inviteToken,reg);check(sqlite.prepare("SELECT s
 await rejects(()=>F.bridgeInvite(db,fid,dest,{memberId:'bob'}),'wrong current member is not silently replaced');
 await F.bridgeInvite(db,fid,dest,null);
 await F.storeEnrollmentProof(db,await C.flow(db,fid),google('alice-subject','different@example.test'));
-const credential=await F.finishEnrollment(db,await C.flow(db,fid),'Google');check(credential.member_id==='alice','invite targets immutable member even when provider email differs');
+const enrollmentFlow=await C.flow(db,fid);
+const enrollRace=await Promise.allSettled([F.finishEnrollment(db,enrollmentFlow,'Google'),F.finishEnrollment(db,enrollmentFlow,'Google')]);
+check(enrollRace.filter(r=>r.status==='fulfilled').length===1,'two simultaneous invitation completions have one winner');
+const credential=enrollRace.find(r=>r.status==='fulfilled').value;check(credential.member_id==='alice','invite targets immutable member even when provider email differs');
 await rejects(async()=>F.finishEnrollment(db,await C.flow(db,fid),'duplicate'),'one invitation attaches one credential');
 const handoff=new URL(await F.issueHandoff(db,env,fid)),code=new URLSearchParams(handoff.hash.slice(1)).get('code');
 await rejects(()=>F.redeem(db,env,fid,code,C.digest('other-browser'),'member',null),'handoff needs original destination browser');
 await rejects(()=>F.redeem(db,env,fid,code,dest,'admin',null),'handoff is audience bound');
-const signed=await F.redeem(db,env,fid,code,dest,'member',null);check(!!signed.token,'one-time handoff creates member session');
+const redeemRace=await Promise.allSettled([F.redeem(db,env,fid,code,dest,'member',null),F.redeem(db,env,fid,code,dest,'member',null)]);
+check(redeemRace.filter(r=>r.status==='fulfilled').length===1,'two simultaneous handoff redemptions have one winner');
+const signed=redeemRace.find(r=>r.status==='fulfilled').value;check(!!signed.token,'one-time handoff creates member session');
 await rejects(()=>F.redeem(db,env,fid,code,dest,'member',null),'handoff replay fails');
 let alice=await S.readSession(db,new Request('https://identity.test',{headers:{Cookie:'__Host-supply-session='+signed.token}}),'member');check(alice.memberId==='alice','provider session does not require password join');
 const session=sqlite.prepare('SELECT * FROM identity_sessions WHERE token_hash=?').get(C.digest(signed.token));check(session.absolute_expires_at-session.created_at===2592000000,'member absolute duration retained');check(sqlite.prepare('SELECT expires_at-created_at n FROM auth_sessions WHERE token_hash=?').get(C.digest(signed.token)).n===604800000,'member idle duration retained');
@@ -87,5 +92,12 @@ const stale=await I.previewImport(db,env,owner,'member_id,display_name\nbob,Stal
 check((await I.commitImport(db,env,owner,stalePayload,await ownerApproval(stalePayload))).conflicts===1,'stale preview cannot overwrite newer details');
 for(const bad of ['member_id,role\nbob,admin','member_id,balance\nbob,0','email,display_name\nbob@example.test,Bob']){assert.throws(()=>I.parseRoster(bad));checks++;}
 const preserved=sqlite.prepare("SELECT id,debt,credit FROM members WHERE id IN ('alice','bob') ORDER BY id").all().map(v=>({...v}));assert.deepEqual(preserved,[{id:'alice',debt:725,credit:250},{id:'bob',debt:300,credit:175}]);checks++;
+const bulkRows=[];
+for(let i=0;i<60;i++){const id='bulk-'+i;sqlite.prepare('INSERT INTO members(id,email,name,role,debt,credit) VALUES(?,?,?,\'member\',?,?)').run(id,id+'@example.test','Member '+i,i*100,i*10);bulkRows.push(id+',Renamed '+i+',,');}
+const bulkBefore=JSON.stringify(sqlite.prepare("SELECT * FROM members ORDER BY id").all()),grantsBefore=sqlite.prepare('SELECT count(*) n FROM identity_grants').get().n;
+const bulk=await I.previewImport(db,env,owner,'member_id,display_name,contact_email,google_bootstrap_email\n'+bulkRows.join('\n'));
+check(bulk.rows.length===60&&bulk.rows.every(r=>r.status==='Update'&&r.changes.join()==='Display name'),'sixty-row preview describes exact changes');
+check(JSON.stringify(sqlite.prepare('SELECT * FROM members ORDER BY id').all())===bulkBefore,'sixty-row preview does not mutate membership or balances');
+check(sqlite.prepare('SELECT count(*) n FROM identity_grants').get().n===grantsBefore,'blank bootstrap cells create no authority');
 console.log(`${checks} identity state, browser binding, containment, owner authority, and import checks passed (synthetic fixtures).`);
 sqlite.close();
