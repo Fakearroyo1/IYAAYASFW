@@ -1,6 +1,7 @@
 "use client";
 import {secureFetch} from "@/lib/identity/client";
 import {IdentityLinks} from './store/identity-links';
+import IdentityPage from './identity/page';
 import { useEffect, useRef, useState } from "react";
 import {
   ShoppingBag,
@@ -201,6 +202,7 @@ export default function Pilot() {
   const [paymentFilter, setPaymentFilter] = useState("pending");
   const [emailTarget,setEmailTarget]=useState<Row|null>(null);
   const [inboxType,setInboxType]=useState("");
+  const [identityContext,setIdentityContext]=useState<Row|null>(null);
   const [taskTarget,setTaskTarget]=useState({type:"",id:""});
   const [gearRevision, setGearRevision] = useState(0);
   const [gearId, setGearId] = useState(""),
@@ -279,6 +281,9 @@ export default function Pilot() {
   }
   useEffect(() => {
     setCart(loadCart());
+    const section=new URLSearchParams(window.location.search).get('section');
+    if(section==='identity')setTab('identity');
+    void fetch('/identity/api',{cache:'no-store'}).then(r=>r.json() as Promise<Row>).then(c=>{if(c.enabled)setIdentityContext(c);}).catch(()=>{});
     try {
       const p = JSON.parse(sessionStorage.getItem("supply-pending") || "null");
       if (p) setPending(p);
@@ -327,6 +332,8 @@ export default function Pilot() {
     );
   }
   const navigate = (v: string) => {
+    if(v==='admin'&&identityContext?.management?.href&&new URL(identityContext.management.href).origin!==window.location.origin){window.location.assign(identityContext.management.href);return;}
+    if(v!=='admin'&&identityContext?.host==='admin'){window.location.assign(identityContext.origins.member+'/?view='+encodeURIComponent(v));return;}
     window.history.replaceState(null, "", "/?view=" + v);
     setView(v);
     setError("");
@@ -928,7 +935,7 @@ export default function Pilot() {
             <p>Money, products, and people. Everything in its place.</p>
           </div>
           <div className="inline-actions">
-            <a className="text-link" href="/api/admin/access">
+            <a className="text-link" href={identityContext?.host==='admin'?'/identity':'/api/admin/access'}>
               Verify access
             </a>
             <Button variant="secondary" onClick={() => open("export")}>
@@ -938,8 +945,9 @@ export default function Pilot() {
           </div>
         </div>
         <div className="management-workspace">
-        <AdminNavigation value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next)}} />
+        <AdminNavigation identityOwner={!!identityContext?.owner} value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next)}} />
         <div className="admin-content">
+          {tab==='identity'&&identityContext?.owner?<IdentityPage embedded/>:null}
           {["overview", "settings"].includes(tab) ? shopControls() : null}
           {data.admin.resetCount ? (
             <div className="notice reset-notice">
@@ -1419,9 +1427,7 @@ export default function Pilot() {
                 {historyControl("events", true)}
               </section>
             </>
-          ) : (
-            settingsView()
-          )}
+          ) : tab === "settings" ? settingsView() : null}
         </div>
         </div>
       </>
@@ -1983,7 +1989,7 @@ export default function Pilot() {
               : []),
             ["account", "My account", Wallet],
             ["recognition", "Recognition", Medal],
-            ...(admin ? [["admin", "Manage", SlidersHorizontal]] : []),
+            ...(admin || identityContext?.management ? [["admin", "Manage", SlidersHorizontal]] : []),
           ].map(([v, label, Icon]: any) => (
             <button
               type="button"

@@ -1,7 +1,7 @@
 import {readJson,RequestError} from '../security/http';
 import {rateLimit,sessionCookie} from '../auth/session';
 import {BROWSER,DESTINATION,ADMIN_COOKIE,config,cookie,cookieValue,csrfToken,verifyCsrf,browserHash,digest,random,same,text,method,fail,flow,sql,one,all,requireRolloutMember,freshMethods,safeReturn,type IdentitySettings,type Flow,type Credential} from './common';
-import {readSession,accessPrincipal,adminSession,requireOwner,type IdentityUser,type AccessPrincipal} from './sessions';
+import {readSession,accessPrincipal,adminSession,requireOwner,usesAdminHost,type IdentityUser,type AccessPrincipal} from './sessions';
 import {newFlow,adoptFlow,boundFlow,grantFor,claimInvite,bridgeInvite,associateProvider,storeEnrollmentProof,finishEnrollment,freshPassword,authenticated,issueHandoff,redeem} from './flows';
 import {startProvider,finishProvider,startPasskey,finishPasskey} from './providers';
 import {ownMethods,ownMutation,adminRead,adminMutation,payloadHash} from './manage';
@@ -14,7 +14,7 @@ async function displayedFlow(db:D1Database,env:IdentitySettings,f:Flow){
  let target:string|null=null,proof:{kind:string;email:string|null}|null=null;
  if(f.member_id&&f.purpose==='enroll')target=(await one<{name:string}>(db,'SELECT name FROM members WHERE id=?',f.member_id))?.name||null;
  if(f.proof&&f.purpose==='enroll'){const p=JSON.parse(f.proof);proof={kind:p.kind,email:p.email||null};}
- return{id:f.id,purpose:f.purpose,status:f.status,action:f.action,target,proof,proofId:proof?digest(f.proof!):null,returnPath:f.return_path,review:f.proof==='"review"',freshMethods:f.purpose==='fresh'?await freshMethods(db,env,f):null,hasPassword:f.purpose==='fresh'&&!!await one(db,'SELECT 1 FROM auth_credentials WHERE member_id=?',f.member_id)};
+ return{id:f.id,purpose:f.purpose,status:f.status,action:f.action,target,proof,proofId:proof?digest(f.proof!):null,returnPath:f.return_path,review:f.proof==='"review"',freshMethods:f.purpose==='fresh'?await freshMethods(db,env,f):null,googleFreshUnavailable:f.purpose==='fresh'&&env.IDENTITY_GOOGLE_FRESH_ENABLED!=='true',hasPassword:f.purpose==='fresh'&&!!await one(db,'SELECT 1 FROM auth_credentials WHERE member_id=?',f.member_id)};
 }
 export async function identityRoute(request:Request,env:Runtime,principal?:AccessPrincipal):Promise<Response|null>{
  const url=new URL(request.url),c=config(env),host=identityHost(env,url);
@@ -50,14 +50,16 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
   if(request.method==='GET'){
    let browser=cookieValue(request,BROWSER);const cookies:string[]=[];
    if(!/^[A-Za-z0-9_-]{43}$/.test(browser)){browser=random();cookies.push(cookie(BROWSER,browser,1800));}
-   return json({enabled:true,host,origins:{member:c.member,auth:c.auth,register:c.register,admin:c.admin},methods:c.methods,csrf:csrfToken(request,browser),user:user?{name:user.displayName,id:user.memberId,audience:user.audience}:null,owner:!!user&&user.memberId===env.IDENTITY_OWNER_MEMBER_ID&&host==='admin'},200,cookies);
+   const administrator=user&&!!await one(db,"SELECT 1 FROM members WHERE id=? AND role='admin' AND active=1",user.memberId);
+   const management=administrator?{href:(await usesAdminHost(db,env,user!.memberId)?c.admin:c.member)+'/?view=admin',identityHref:c.admin+'/?view=admin&section=identity'}:null;
+   return json({enabled:true,host,origins:{member:c.member,auth:c.auth,register:c.register,admin:c.admin},methods:c.methods,management,csrf:csrfToken(request,browser),user:user?{name:user.displayName,id:user.memberId,audience:user.audience}:null,owner:!!user&&user.memberId===env.IDENTITY_OWNER_MEMBER_ID&&host==='admin'},200,cookies);
   }
   if(request.method!=='POST')return json({error:'Method not allowed.'},405);
   verifyCsrf(request);const b=await readJson(request,70000),browser=browserHash(request),action=text(b.action,40);
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(!await rateLimit(db,'identity-api:'+ip,1200,900000))fail('Too many attempts. Try again later.',429);
   if(action==='adminLogin'){
-   if(host!=='admin'||!principal)fail();const token=await adminSession(db,principal!);return json({next:'/?view=admin'},200,[cookie(ADMIN_COOKIE,token,43200)]);
+   if(host!=='admin'||!principal)fail();const token=await adminSession(db,principal!);return json({next:'/?view=admin'+(b.section==='identity'?'&section=identity':'')},200,[cookie(ADMIN_COOKIE,token,43200)]);
   }
   if(action==='start'){
    if(host!=='member'&&host!=='admin')fail();
@@ -122,6 +124,13 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
    const row=await one<{purpose:string;action_payload:string|null}>(db,"SELECT g.purpose,f.action_payload FROM identity_grants g JOIN identity_flows f ON f.id=g.flow_id WHERE g.id=? AND g.member_id=? AND g.source_session=? AND g.status='pending' AND g.expires_at>?",text(b.approval,80),user!.memberId,user!.tokenHash,Date.now());if(!row)fail('Approval expired. Start again.',409);return json({purpose:row!.purpose,payload:row!.action_payload?JSON.parse(row!.action_payload):null});
   }
   if(action==='adminRead')return json(await adminRead(db,env,user!,text(b.query||'',100),b.target?text(b.target,80):undefined));
+  if(action==='importTemplate'){
+   await requireOwner(db,user,env);
+   const members=await all<{id:string}>(db,'SELECT id FROM members ORDER BY name,id LIMIT 101');
+   if(members.length>100)fail('Prepare separate CSV batches of at most 100 existing member IDs.',400);
+   const cell=(value:string)=>'"'+value.replace(/"/g,'""')+'"';
+   return json({csv:'member_id,display_name,contact_email,google_bootstrap_email,microsoft_bootstrap_email,access_enabled\n'+members.map(m=>cell(m.id)+',,,,,').join('\n')});
+  }
   if(action==='importPreview')return json(await previewImport(db,env,user!,text(b.csv,65536)));
   if(action==='admin'){
    if(!b.payload||typeof b.payload!=='object'||Array.isArray(b.payload))fail('Choose an action.',400);

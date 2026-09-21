@@ -7,7 +7,7 @@ import {fixture} from './identity-fixture.mjs';
 const f=await fixture(),{db,sqlite}=f,C=await f.module('lib/identity/common'),F=await f.module('lib/identity/flows'),P=await f.module('lib/identity/providers');
 sqlite.exec("INSERT INTO members(id,email,name,role) VALUES('member','member@example.test','Synthetic Member','member'),('other','other@example.test','Other Member','member')");
 sqlite.exec(readFileSync('IDENTITY-SCHEMA.sql','utf8'));
-const env={IDENTITY_ENABLED:'true',IDENTITY_BASE_DOMAIN:'identity.test',IDENTITY_GOOGLE_ENABLED:'true',IDENTITY_MICROSOFT_ENABLED:'true',IDENTITY_PASSKEY_ENABLED:'true',GOOGLE_CLIENT_ID:'synthetic-google-client',GOOGLE_CLIENT_SECRET:'synthetic-google-secret',MICROSOFT_CLIENT_ID:'synthetic-microsoft-client',MICROSOFT_CLIENT_SECRET:'synthetic-microsoft-secret'};
+const env={IDENTITY_ENABLED:'true',IDENTITY_BASE_DOMAIN:'identity.test',IDENTITY_GOOGLE_ENABLED:'true',IDENTITY_GOOGLE_FRESH_ENABLED:'true',IDENTITY_MICROSOFT_ENABLED:'true',IDENTITY_PASSKEY_ENABLED:'true',GOOGLE_CLIENT_ID:'synthetic-google-client',GOOGLE_CLIENT_SECRET:'synthetic-google-secret',MICROSOFT_CLIENT_ID:'synthetic-microsoft-client',MICROSOFT_CLIENT_SECRET:'synthetic-microsoft-secret'};
 let checks=0;const check=(v,label)=>{assert.ok(v,label);checks++;};const rejects=async(fn,label)=>{await assert.rejects(fn,label);checks++;};
 const browser=C.digest('synthetic-auth-browser'),destination=C.digest('synthetic-destination');
 const signingKeys=await generateKeyPair('RS256',{extractable:true}),jwk=await exportJWK(signingKeys.publicKey);jwk.kid='synthetic-signing-key';jwk.alg='RS256';jwk.use='sig';
@@ -50,6 +50,17 @@ try{
  const insert=F.credentialInsert(db,'member',{kind:'google',issuer:P.ISSUERS.google,subject:'pre-existing-proof',clientId:env.GOOGLE_CLIENT_ID,email:null,tenant:null,objectId:null},'fixture');await insert.statement.run();
  sqlite.prepare('UPDATE identity_credentials SET created_at=? WHERE id=?').run(fresh.created_at-1,insert.credentialId);
  check((await C.freshMethods(db,env,fresh)).join(',')==='google','pre-existing active Google with current client is offered');
+ check((await C.freshMethods(db,{...env,IDENTITY_GOOGLE_FRESH_ENABLED:'false'},fresh)).length===0,'Google login availability does not imply provider fresh-verification support');
+ await rejects(()=>P.startProvider(db,{...env,IDENTITY_GOOGLE_FRESH_ENABLED:'false'},fresh,'google',browser),'unverified Google freshness configuration cannot initiate an account-change ceremony');
+ for(const timestamp of [undefined,Math.floor(Date.now()/1000)-900,Math.floor(Date.now()/1000)]){
+  provider='google';const start=new URL(await P.startProvider(db,env,fresh,'google',browser));
+  check(JSON.parse(start.searchParams.get('claims')).id_token.auth_time.essential===true,'fresh Google request explicitly asks for authentication time');
+  claims={iss:P.ISSUERS.google,sub:'pre-existing-proof',aud:env.GOOGLE_CLIENT_ID,iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+3600,nonce:start.searchParams.get('nonce'),...(timestamp===undefined?{}:{auth_time:timestamp})};
+  const callback=new URL('https://auth.identity.test/oidc/google/callback');callback.searchParams.set('state',start.searchParams.get('state'));callback.searchParams.set('code','synthetic-fresh-code');callback.searchParams.set('iss',P.ISSUERS.google);
+  if(timestamp===undefined||timestamp<Math.floor(Date.now()/1000)-300){await assert.rejects(()=>P.finishProvider(db,env,callback,'google',browser),/could not confirm a recent account verification/);checks++;}
+  else check((await P.finishProvider(db,env,callback,'google',browser)).proof.authTime===timestamp*1000,'signed recent authentication time is accepted without using token issuance as proof');
+ }
+ check(JSON.parse(sqlite.prepare("SELECT detail FROM identity_audit WHERE event='provider_callback_rejected' ORDER BY created_at DESC LIMIT 1 OFFSET 1").get().detail).category==='freshness-missing','missing auth_time has a fixed safe diagnostic category');
  check((await C.freshMethods(db,{...env,GOOGLE_CLIENT_ID:'changed-client'},fresh)).length===0,'old-client credential is not offered as proof');
  check((await C.freshMethods(db,{...env,IDENTITY_GOOGLE_ENABLED:'false'},fresh)).length===0,'disabled provider is not offered as proof');
  sqlite.prepare("UPDATE identity_credentials SET status='revoked' WHERE id=?").run(insert.credentialId);

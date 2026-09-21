@@ -35,10 +35,25 @@ Before the first live deployment:
 5. Verify anonymous host/API denial, password fallback and read-only commerce,
    then perform the real owner provider, phone, admin-MFA and recovery checklist.
 
-`owner-smoke` preserves the old apex administration path while testing new member
-methods only for Jake. It is a temporary gate, not the requested final audience.
+`owner-smoke` sends Jake and administrators with an existing principal mapping
+to the administrator host and removes their apex administrator authority. A
+revoked mapping never restores the old apex authority. Unmapped administrators
+retain the established MFA-protected path while new member methods are tested
+only for Jake. This is a temporary gate, not the requested final audience.
 The owner deferred Mason's test because he is unavailable; his subject mapping
 must remain pending until verified. Keep his established permissions unchanged.
+
+Google ordinary login and Google fresh account-change proof have separate flags.
+Keep `IDENTITY_GOOGLE_FRESH_ENABLED=false` until branding approval, Session age
+claims and a real fresh-proof test establish support. Do not weaken the
+five-minute signed authentication-time requirement to bypass Google settings.
+
+The owner account suite is at `https://admin.iyaayasfw.com/?view=admin&section=identity`,
+under **Members & community → Accounts & sign-in**. It includes member-bound
+invitations, independent login-request review and previewed CSV imports. CSV
+templates contain existing member IDs; blank fields preserve stored values.
+No email/name similarity authorizes a link, and methods cannot be transferred
+between members or used to merge financial history.
 
 `all-approved` preparation additionally requires both explicit admin mappings and
 recorded passing Google, Microsoft, iPhone/Safari, Android/Chrome, desktop,

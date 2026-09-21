@@ -1,7 +1,7 @@
 import handler from "vinext/server/fetch-handler";
 import {identityRoute,identityHost} from './lib/identity/router';
 import {config,verifyCsrf} from './lib/identity/common';
-import {accessPrincipal,readSession} from './lib/identity/sessions';
+import {accessPrincipal,readSession,usesAdminHost} from './lib/identity/sessions';
 import {cleanIdentityMetadata} from './lib/identity/retention';
 import {RequestError} from './lib/security/http';
 // This app uses explicit JSON APIs, not Server Actions. Keep the unused decoder
@@ -60,17 +60,21 @@ export default {
       if(identity.enabled){
         if(!host)throw new RequestError('Unknown application host.',421);
         headers.set('x-identity-audience',host==='admin'?'admin':'member');
+        if(host==='member'&&request.method==='GET'&&(path==='/api/admin/access'||path==='/'&&url.searchParams.get('view')==='admin')){
+          const memberSession=env.DB?await readSession(env.DB,request,'member'):null;
+          if(env.IDENTITY_ROLLOUT==='all-approved'||memberSession&&await usesAdminHost(env.DB!,env,memberSession.memberId))response=Response.redirect(identity.admin+'/?view=admin'+(url.searchParams.get('section')==='identity'?'&section=identity':''),303);
+        }
         if(host==='admin'){
           if(!env.DB)throw new RequestError('Administrator sign-in is unavailable.',503);
           principal=await accessPrincipal(env.DB,env,request);
           const user=await readSession(env.DB,request,'admin');
           if(user&&user.principalId!==principal.id)throw new RequestError('Administrator accounts do not match.',403);
-          if(!user&&!['/identity','/identity/api','/theme.js'].includes(path)&&!/^\/(?:_next|_vinext|assets|brand)\//.test(path))response=Response.redirect(identity.admin+'/identity',303);
+          if(!user&&!['/identity','/identity/api','/theme.js'].includes(path)&&!/^\/(?:_next|_vinext|assets|brand)\//.test(path))response=Response.redirect(identity.admin+'/identity'+(url.searchParams.get('section')==='identity'?'?section=identity':''),303);
           if(path==='/login')response=Response.redirect(identity.admin+'/identity',303);
         }
         if((host==='auth'||host==='register')&&path==='/')response=Response.redirect(url.origin+'/identity',303);
         if(host==='auth'&&path==='/identity'&&request.method==='GET'&&!url.searchParams.has('flow')&&!url.searchParams.has('error'))response=Response.redirect(identity.member+'/login?next='+encodeURIComponent(url.searchParams.get('next')||'/'),303);
-        if(path==='/api/admin/access'&&(env.IDENTITY_ROLLOUT==='all-approved'||host!=='member'))response=host==='member'?Response.redirect(identity.admin+'/identity',303):new Response('Use administrator sign-in.',{status:405});
+        if(!response&&path==='/api/admin/access'&&(env.IDENTITY_ROLLOUT==='all-approved'||host!=='member'))response=host==='member'?Response.redirect(identity.admin+'/?view=admin',303):new Response('Use administrator sign-in.',{status:405});
         if(request.method==='POST'&&write)verifyCsrf(request);
       }
       if(!response)response=(await identityRoute(request,env,principal))||undefined;

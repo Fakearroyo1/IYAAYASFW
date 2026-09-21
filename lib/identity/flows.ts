@@ -111,6 +111,7 @@ export async function redeem(db:D1Database,env:IdentitySettings,flowId:string,co
  if(f.credential_id)statements.push(guard(db,"EXISTS(SELECT 1 FROM identity_credentials WHERE id=? AND member_id=? AND status='active')",f.credential_id,m.id));
  let token:string|null=null,next=f.return_path;
  if(f.purpose==='fresh'){
+  if(f.credential_id&&env.IDENTITY_GOOGLE_FRESH_ENABLED!=='true'&&await one(db,"SELECT 1 FROM identity_credentials WHERE id=? AND kind='google'",f.credential_id))fail('Use another existing method to verify this account change.',403);
   if(!f.source_session||!f.action||!f.proof_at||f.proof_at<now-300000)fail('Verify an existing method again.',403);
   statements.push(liveSessionGuard(db,f.source_session!,m.id));
   const grantId=id(),enroll=f.action!.startsWith('add:'),nextFlow=random();

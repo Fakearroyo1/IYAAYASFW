@@ -45,9 +45,16 @@ const secondApproval=await approval(1,credentials[1].id);
 const race=await Promise.allSettled([M.ownMutation(db,env,user(0),{operation:'unlink',target:credentials[0].id,approval:firstApproval}),M.ownMutation(db,env,user(1),{operation:'unlink',target:credentials[1].id,approval:secondApproval})]);
 check(race.filter(x=>x.status==='fulfilled').length===1,'two concurrent removals cannot remove the last method');
 check(sqlite.prepare("SELECT count(*) n FROM identity_credentials WHERE member_id='member' AND status='active'").get().n===1,'one usable method remains');
-// Temporary owner rehearsal keeps the established MFA route usable for current administrators.
+// Owner rehearsal migrates verified administrators while the unmapped admin keeps the established MFA route.
 const ownerToken=C.sessionToken();sqlite.prepare('INSERT INTO auth_credentials VALUES(?,?,?)').run('owner','synthetic-password-hash',now);sqlite.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(C.digest(ownerToken),'owner',now,now+600000);
 const request=new Request('https://identity.test',{headers:{Cookie:'__Host-supply-session='+ownerToken}});
-check((await S.applicationSession(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},request,'member')).role==='admin','owner rehearsal preserves current admin commerce role');
+check((await S.applicationSession(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},request,'member')).role==='member','owner uses the administrator host during rehearsal');
+sqlite.prepare("INSERT INTO members(id,email,name,role) VALUES('second','second@example.test','Second','admin')").run();sqlite.exec(readFileSync('IDENTITY-SCHEMA.sql','utf8'));
+sqlite.prepare('INSERT INTO auth_credentials VALUES(?,?,?)').run('second','synthetic-password-hash',now);
+const secondToken=C.sessionToken();sqlite.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(C.digest(secondToken),'second',now,now+600000);
+const secondRequest=new Request('https://identity.test',{headers:{Cookie:'__Host-supply-session='+secondToken}});
+check((await S.applicationSession(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},secondRequest,'member')).role==='admin','unmapped existing administrator keeps the established route until verification');
+sqlite.prepare("INSERT INTO identity_admin_principals(id,issuer,subject,member_id,status,provisioned_at,evidence) VALUES('second-principal','https://fixture.cloudflareaccess.com','second-subject','second','revoked',?,'synthetic')").run(now);
+check((await S.applicationSession(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},secondRequest,'member')).role==='member','revoked migrated mapping cannot restore apex administrator authority');
 check((await S.applicationSession(db,env,request,'member')).role==='member','final cutover removes apex administrator authority');
 console.log(`${checks} identity rollout, method-disable, existing-proof, and last-method race checks passed.`);sqlite.close();

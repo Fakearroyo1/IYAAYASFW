@@ -42,18 +42,24 @@ export async function startProvider(db:D1Database,env:IdentitySettings,f:Flow,pr
   if(f.purpose==='fresh'&&!(await freshMethods(db,env,f)).includes(provider))fail('Verify with your existing password or an already linked method before adding this method.',403);
   const {client,callback}=providerClient(env,provider),verifier=oidc.randomPKCECodeVerifier(),nonce=oidc.randomNonce();
   const state=await saveCeremony(db,f,provider,browser,{verifier,nonce,fresh:f.purpose==='fresh'?'true':'false'},600000);
-  const url=oidc.buildAuthorizationUrl(client,{redirect_uri:callback,scope:'openid email profile',response_type:'code',state,nonce,code_challenge:await oidc.calculatePKCECodeChallenge(verifier),code_challenge_method:'S256',...(f.purpose==='fresh'?{max_age:'0',prompt:provider==='microsoft'?'login':'select_account'}:{prompt:'select_account'})});
+  // Google requires an explicit optional-claim request and enabled Session age
+  // claims in Google Auth Platform. It does not support forcing Google reauth.
+  // A returned timestamp must still pass the same five-minute server check.
+  const freshOptions:Record<string,string>=provider==='google'?{prompt:'select_account',claims:JSON.stringify({id_token:{auth_time:{essential:true}}})}:{max_age:'0',prompt:'login'};
+  const url=oidc.buildAuthorizationUrl(client,{redirect_uri:callback,scope:'openid email profile',response_type:'code',state,nonce,code_challenge:await oidc.calculatePKCECodeChallenge(verifier),code_challenge_method:'S256',...(f.purpose==='fresh'?freshOptions:{prompt:'select_account'})});
   return url.href;
 }
 export async function finishProvider(db:D1Database,env:IdentitySettings,url:URL,provider:'google'|'microsoft',browser:string){
   const state=url.searchParams.get('state');if(!state||state.length>100)fail();
   const ceremony=await consumeCeremony(db,state!,provider,browser),{client,clientId,callback}=providerClient(env,provider);
+  if(provider==='google'&&ceremony.secret.fresh==='true'&&env.IDENTITY_GOOGLE_FRESH_ENABLED!=='true')fail('Use your existing password, passkey, or Personal Microsoft to verify this account change.',403);
   if(url.origin+url.pathname!==callback)fail();
   const tokens=await oidc.authorizationCodeGrant(client,url,{expectedState:state!,expectedNonce:ceremony.secret.nonce,pkceCodeVerifier:ceremony.secret.verifier,idTokenExpected:true,...(ceremony.secret.fresh==='true'?{maxAge:300}:{})}).catch(async error=>{
     // One record per consumed, browser-bound ceremony. Only fixed categories;
     // never persist provider messages, claims, URLs, codes or error causes.
     const category=providerErrorCategory(error);
     await audit(db,'authentication-attempt','provider_callback_rejected',provider,{category,fresh:ceremony.secret.fresh==='true'}).run();
+    if(ceremony.secret.fresh==='true'&&(category==='freshness-missing'||category==='token-time'))fail('This provider could not confirm a recent account verification. Start the account change again and use your existing password, passkey, or another linked method.',403);
     fail(`Provider sign-in could not be verified (${category}). Start again using an existing method.`,403);
   });
   const claims=tokens.claims();if(!claims)fail();
@@ -63,6 +69,7 @@ export function providerErrorCategory(error:unknown){
   if(error instanceof oidc.AuthorizationResponseError)return 'provider-declined';
   if(error instanceof oidc.ResponseBodyError)return error.error==='invalid_client'?'client-configuration':error.error==='invalid_grant'?'code-rejected':'token-response';
   if(error instanceof oidc.ClientError){
+    if(error.code==='OAUTH_INVALID_RESPONSE'&&error.cause instanceof Error&&error.cause.message==='JWT "auth_time" (authentication time) claim missing')return 'freshness-missing';
     if(error.code==='OAUTH_TIMEOUT'||error.code==='OAUTH_ABORT')return 'provider-timeout';
     if(error.code==='OAUTH_JWT_TIMESTAMP_CHECK_FAILED')return 'token-time';
     if(error.code==='OAUTH_JWT_CLAIM_COMPARISON_FAILED')return 'token-claims';

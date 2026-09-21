@@ -5,7 +5,7 @@ import {RequestError} from '../security/http';
 export {digest,same};
 export type Method='google'|'microsoft'|'passkey';
 export type Audience='member'|'admin';
-export type IdentitySettings = Partial<Record<'IDENTITY_ENABLED'|'IDENTITY_ROLLOUT'|'IDENTITY_GOOGLE_ENABLED'|'IDENTITY_MICROSOFT_ENABLED'|'IDENTITY_PASSKEY_ENABLED'|'IDENTITY_GOOGLE_BOOTSTRAP_ENABLED'|'IDENTITY_BASE_DOMAIN'|'IDENTITY_OWNER_MEMBER_ID'|'GOOGLE_CLIENT_ID'|'GOOGLE_CLIENT_SECRET'|'MICROSOFT_CLIENT_ID'|'MICROSOFT_CLIENT_SECRET'|'ADMIN_ACCESS_TEAM_DOMAIN'|'ADMIN_ACCESS_AUD'|'IDENTITY_ADMIN_ACCESS_AUD'|'IDENTITY_REQUEST_RETENTION_DAYS'|'IDENTITY_SESSION_RETENTION_DAYS'|'IDENTITY_AUDIT_RETENTION_DAYS',string>>;
+export type IdentitySettings = Partial<Record<'IDENTITY_ENABLED'|'IDENTITY_ROLLOUT'|'IDENTITY_GOOGLE_ENABLED'|'IDENTITY_GOOGLE_FRESH_ENABLED'|'IDENTITY_MICROSOFT_ENABLED'|'IDENTITY_PASSKEY_ENABLED'|'IDENTITY_GOOGLE_BOOTSTRAP_ENABLED'|'IDENTITY_BASE_DOMAIN'|'IDENTITY_OWNER_MEMBER_ID'|'GOOGLE_CLIENT_ID'|'GOOGLE_CLIENT_SECRET'|'MICROSOFT_CLIENT_ID'|'MICROSOFT_CLIENT_SECRET'|'ADMIN_ACCESS_TEAM_DOMAIN'|'ADMIN_ACCESS_AUD'|'IDENTITY_ADMIN_ACCESS_AUD'|'IDENTITY_REQUEST_RETENTION_DAYS'|'IDENTITY_SESSION_RETENTION_DAYS'|'IDENTITY_AUDIT_RETENTION_DAYS',string>>;
 export function fail(message='This sign-in method is not linked to enabled access. Contact a snack bar admin.',status=403):never{throw new RequestError(message,status)}
 export const random=()=>randomBytes(32).toString('base64url');
 export const sessionToken=()=>randomBytes(32).toString('hex');
@@ -52,7 +52,7 @@ export type Flow={id:string;purpose:'login'|'fresh'|'enroll';audience:Audience;d
 // Only pre-existing, currently usable credentials can prove a sensitive change.
 export async function freshMethods(db:D1Database,env:IdentitySettings,f:Flow):Promise<Method[]>{
   const c=config(env),rows=await all<Credential>(db,"SELECT * FROM identity_credentials WHERE member_id=? AND status='active' AND created_at<=?",f.member_id||'',f.created_at);
-  return [...new Set(rows.filter(v=>c.methods[v.kind]&&(v.kind==='passkey'?v.rp_id===c.domain:v.client_id===(v.kind==='google'?env.GOOGLE_CLIENT_ID:env.MICROSOFT_CLIENT_ID))).map(v=>v.kind))];
+  return [...new Set(rows.filter(v=>(v.kind!=='google'||env.IDENTITY_GOOGLE_FRESH_ENABLED==='true')&&c.methods[v.kind]&&(v.kind==='passkey'?v.rp_id===c.domain:v.client_id===(v.kind==='google'?env.GOOGLE_CLIENT_ID:env.MICROSOFT_CLIENT_ID))).map(v=>v.kind))];
 }
 export async function flow(db:D1Database,flowId:string){const f=await one<Flow>(db,"SELECT * FROM identity_flows WHERE id=? AND status IN ('pending','proven') AND expires_at>?",flowId,Date.now());if(!f)fail('This sign-in request expired. Start again.',409);return f!;}
 export const flowGuard=(db:D1Database,f:Flow)=>guard(db,"EXISTS(SELECT 1 FROM identity_flows WHERE id=? AND status=? AND expires_at>?)",f.id,f.status,Date.now());

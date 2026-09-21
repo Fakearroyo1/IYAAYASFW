@@ -10,13 +10,14 @@ export const adminGroups = [
   { title: "Store operations", items: [["team", "Team board"], ["activity", "Activity history"], ["settings", "Store settings"]] },
 ] as const;
 
-export default function AdminNavigation({value,onChange}:{value:string;onChange:(value:string)=>void}) {
+export default function AdminNavigation({value,onChange,identityOwner=false}:{value:string;onChange:(value:string)=>void;identityOwner?:boolean}) {
+  const groups=adminGroups.map(group=>({title:group.title,items:[...group.items,...(identityOwner&&group.title==='Members & community'?[['identity','Accounts & sign-in'] as const]:[])]}));
   return <>
     <label className="management-select field"><span>Management section</span><NativeSelect value={value} onChange={e=>onChange(e.target.value)}>
-      {adminGroups.map(group=><optgroup label={group.title} key={group.title}>{group.items.map(([id,label])=><option key={id} value={id}>{label}</option>)}</optgroup>)}
+      {groups.map(group=><optgroup label={group.title} key={group.title}>{group.items.map(([id,label])=><option key={id} value={id}>{label}</option>)}</optgroup>)}
     </NativeSelect></label>
     <nav className="management-nav" aria-label="Store management">
-      {adminGroups.map(group=><div className="management-group" key={group.title}><span>{group.title}</span><div>{group.items.map(([id,label])=><button type="button" key={id} aria-current={value===id?"page":undefined} onClick={()=>onChange(id)}>{label}</button>)}</div></div>)}
+      {groups.map(group=><div className="management-group" key={group.title}><span>{group.title}</span><div>{group.items.map(([id,label])=><button type="button" key={id} aria-current={value===id?"page":undefined} onClick={()=>onChange(id)}>{label}</button>)}</div></div>)}
     </nav>
   </>;
 }

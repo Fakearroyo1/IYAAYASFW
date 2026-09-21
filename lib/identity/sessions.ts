@@ -21,13 +21,16 @@ export async function readSession(db:D1Database,request:Request,audience:Audienc
  return{memberId:row.id,userId:row.user_id||'member:'+row.id,email:row.email,displayName:row.name,role:audience==='admin'?row.role:'member',tokenHash,audience,epoch:row.epoch,principalId:row.principal_id};
 }
 export type AccessPrincipal={id:string;member_id:string;identity_owner:number;expiresAt:number;subject:string;issuer:string};
-// The temporary owner rehearsal retains the existing Access-protected admin
-// route until both current administrators have verified principal mappings.
-// The all-approved cutover removes this compatibility path server-side.
+// Once an administrator is migrated, revoking the mapping must never restore
+// the old apex authority. Unmapped administrators retain their existing route
+// during owner testing until their independently verified migration is ready.
+export async function usesAdminHost(db:D1Database,env:IdentitySettings,memberId:string){
+ return env.IDENTITY_ROLLOUT==='all-approved'||memberId===env.IDENTITY_OWNER_MEMBER_ID||!!await one(db,'SELECT 1 FROM identity_admin_principals WHERE member_id=?',memberId);
+}
 export async function applicationSession(db:D1Database,env:IdentitySettings,request:Request,audience:Audience){
  if(audience==='member'&&env.IDENTITY_ROLLOUT!=='all-approved'){
   const legacy=await sessionUser(db,request.headers.get('cookie'));
-  if(legacy){await renewSession(db,request.headers.get('cookie'));return legacy;}
+  if(legacy&&!(legacy.role==='admin'&&await usesAdminHost(db,env,legacy.memberId))){await renewSession(db,request.headers.get('cookie'));return legacy;}
  }
  return readSession(db,request,audience);
 }

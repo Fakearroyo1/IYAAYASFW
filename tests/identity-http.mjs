@@ -11,11 +11,12 @@ const issuer='https://fixture.cloudflareaccess.com',audience='fixture-admin-audi
 const token=async(subject='owner-subject',iat=Math.floor(Date.now()/1000),aud=audience)=>new SignJWT({email:'irrelevant@example.test'}).setProtectedHeader({alg:'RS256',kid:jwk.kid}).setIssuer(issuer).setAudience(aud).setSubject(subject).setIssuedAt(iat).setExpirationTime(iat+1800).sign(privateKey);
 const settings={IDENTITY_ENABLED:'true',IDENTITY_ROLLOUT:'all-approved',IDENTITY_BASE_DOMAIN:domain,IDENTITY_OWNER_MEMBER_ID:'owner',IDENTITY_PASSKEY_ENABLED:'true',IDENTITY_GOOGLE_ENABLED:'false',IDENTITY_MICROSOFT_ENABLED:'false',ADMIN_ACCESS_TEAM_DOMAIN:issuer,IDENTITY_ADMIN_ACCESS_AUD:audience,TURNSTILE_SITE_KEY:'fixture-site',TURNSTILE_SECRET_KEY:'fixture-secret',OWNER_EMAIL:'owner@example.test'};
 let unexpectedOutbound=0;
-const mf=new Miniflare({modules:[{type:'ESModule',path:resolve('dist/server/index.js')},...readdirSync('dist/server',{recursive:true}).filter(p=>p.endsWith('.js')&&p!=='index.js').map(p=>({type:'ESModule',path:resolve('dist/server',p)}))],modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:settings,cf:false,outboundService:async request=>{
+const mfOptions={modules:[{type:'ESModule',path:resolve('dist/server/index.js')},...readdirSync('dist/server',{recursive:true}).filter(p=>p.endsWith('.js')&&p!=='index.js').map(p=>({type:'ESModule',path:resolve('dist/server',p)}))],modulesRoot:resolve('dist/server'),compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:settings,cf:false,outboundService:async request=>{
  const url=new URL(request.url);if(url.href===issuer+'/cdn-cgi/access/certs')return Response.json({keys:[jwk]});
  if(url.href==='https://challenges.cloudflare.com/turnstile/v0/siteverify'){const b=await request.json();return Response.json({success:b.secret==='fixture-secret'&&b.response==='synthetic-challenge',hostname:domain,action:'account'});}
  unexpectedOutbound++;return new Response('Unexpected synthetic outbound',{status:502});
-}});
+}};
+const mf=new Miniflare(mfOptions);
 let checks=0;const check=(value,label)=>{assert.ok(value,label);checks++;};
 const request=(host,path='/identity/api',body,headers={})=>mf.dispatchFetch('https://'+host+path,{redirect:'manual',method:body?'POST':'GET',headers:{...(body?{'Content-Type':'application/json',Origin:'https://'+host}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});
 const browser=host=>({host,cookies:new Map(),csrf:'',access:null});
@@ -31,6 +32,11 @@ try{
  await db.prepare("INSERT INTO members(id,email,name,role,debt,credit) VALUES('owner','owner@example.test','Owner','admin',0,0),('second-admin','second@example.test','Second admin','admin',0,0),('member','member@example.test','Member','member',725,250)").run();
  await db.prepare("INSERT INTO settings(id) VALUES('main')").run();
  for(const id of ['owner','second-admin','member'])await db.prepare('INSERT INTO auth_credentials VALUES(?,?,?)').bind(id,hash,Date.now()).run();
+ for(const path of ['/about','/privacy']){
+  const publicPage=await request(domain,path),html=await publicPage.text();
+  check(publicPage.status===200&&html.includes('IYAAYASFW member login'),'public branding page loads without a session: '+path);
+ }
+ check((await request(domain,'/')).status===307,'store homepage remains protected');
  const entry=await request(domain,'/login?next=/products/synthetic-item'),entryLocation=new URL(entry.headers.get('location'));
  check(entry.status===303&&entryLocation.origin==='https://auth.test.local'&&entryLocation.pathname==='/identity','default login goes directly to the auth host');
  const destinationCookie=entry.headers.get('set-cookie');
@@ -59,6 +65,18 @@ try{
  const signedEntry=await request(domain,'/login?next=/products/synthetic-item',undefined,headers(member));
  check(signedEntry.status===303&&signedEntry.headers.get('location')==='https://test.local/products/synthetic-item'&&!signedEntry.headers.has('set-cookie'),'signed-in member keeps the requested page without a new identity flow');
  const own=await post(member,{action:'account'});check(own.status===200&&(await own.json()).hasPassword,'existing account preserved');
+ check((await context(member)).c.management===null,'ordinary member gets no management navigation');
+ check((await post(member,{action:'importTemplate'})).status===403,'ordinary member cannot export roster template');
+ const ownerMember=browser(domain);await context(ownerMember);
+ const ownerLogin=await request(domain,'/api/auth',{action:'login',email:'owner@example.test',password,challengeToken:'synthetic-challenge'},{...headers(ownerMember),'x-identity-csrf':ownerMember.csrf});saveCookies(ownerMember,ownerLogin);
+ const ownerContext=await context(ownerMember);
+ check(ownerContext.c.management.href==='https://admin.test.local/?view=admin','owner Manage points to administrator host');
+ for(const path of ['/?view=admin','/api/admin/access']){
+  const redirect=await request(domain,path,undefined,headers(ownerMember));
+  check(redirect.status===303&&redirect.headers.get('location')==='https://admin.test.local/?view=admin','legacy owner management entry migrates to admin host: '+path);
+ }
+ const memberPilot=await (await request(domain,'/api/pilot',undefined,headers(ownerMember))).json();
+ check(!memberPilot.admin,'owner member-host session cannot read administrator dashboard');
  const flowResponse=await post(member,{action:'start',purpose:'add:passkey',next:'//evil.test'}),flowResult=await flowResponse.json();check(flowResponse.status===200&&flowResult.next.startsWith('https://register.test.local/identity?flow='),'fresh addition begins at fixed registration host');
  const flowId=new URL(flowResult.next).searchParams.get('flow'),register=browser('register.test.local'),auth=browser('auth.test.local');await context(register);await context(auth);
  check((await post(register,{action:'adopt',flow:flowId})).status===200,'registration browser binds before proof');
@@ -90,14 +108,26 @@ try{
  admin.access=await token('owner-subject',Math.floor(Date.now()/1000)-1900);check((await context(admin)).r.status===403,'expired Access factor denied');
  admin.access=await token('owner-subject',undefined,'wrong-audience');check((await context(admin)).r.status===403,'wrong Access audience denied');
  admin.access=await token();check((await context(admin)).r.status===200,'mapped current Access subject accepted');
- check((await post(admin,{action:'adminLogin'})).status===200,'admin app session created');await context(admin);
+ const enterAdmin=await post(admin,{action:'adminLogin',section:'identity'});
+ check(enterAdmin.status===200&&(await enterAdmin.json()).next==='/?view=admin&section=identity','admin app session preserves account-management destination');await context(admin);
  check((await post(admin,{action:'adminRead',query:''})).status===200,'owner identity workspace available');
+ const template=await post(admin,{action:'importTemplate'}),templateBody=await template.json();
+ check(template.status===200&&templateBody.csv.includes('"member",,,,,')&&!templateBody.csv.includes('member@example.test'),'owner roster template uses explicit IDs without inferred email authority');
+ const blankPreview=await post(admin,{action:'importPreview',csv:templateBody.csv});
+ check(blankPreview.status===200&&(await blankPreview.json()).rows.every(row=>row.status==='Unchanged'),'blank roster template previews without granting or changing access');
  const second=browser('admin.test.local');second.access=await token('second-subject');await context(second);await post(second,{action:'adminLogin'});await context(second);
  check((await post(second,{action:'adminRead',query:''})).status===403,'second commerce administrator cannot grant new identities');
+ check((await post(second,{action:'importTemplate'})).status===403,'second commerce administrator cannot export identity template');
  check((await request(second.host,'/api/pilot',undefined,headers(second))).status===200,'second administrator retains commerce access');
  check((await request(domain,'/api/pilot',undefined,{Cookie:'__Host-supply-session='+admin.cookies.get('__Host-supply-admin')})).status===401,'admin token cannot be replayed as member token');
  check((await request(admin.host,'/api/pilot',undefined,{...headers(admin),'cf-access-jwt-assertion':second.access})).status===403,'Access principal must match app session');
  const state=await db.prepare("SELECT debt,credit FROM members WHERE id='member'").first();check(state.debt===725&&state.credit===250,'identity checks preserve balances');
+ await mf.setOptions({...mfOptions,bindings:{...settings,IDENTITY_ROLLOUT:'owner-smoke'}});
+ const ownerStageContext=await context(ownerMember);
+ check(ownerStageContext.c.management.href==='https://admin.test.local/?view=admin','owner-stage navigation also uses administrator host');
+ const ownerStageRoute=await request(domain,'/?view=admin&section=identity',undefined,headers(ownerMember));
+ check(ownerStageRoute.status===303&&ownerStageRoute.headers.get('location')==='https://admin.test.local/?view=admin&section=identity','owner-stage server redirect preserves account suite');
+ check(!(await (await request(domain,'/api/pilot',undefined,headers(ownerMember))).json()).admin,'owner-stage member session has no administrator dashboard authority');
  check(unexpectedOutbound===0,'no production/provider traffic sent');
  const result={suite:'identity-http',checks,providers:'synthetic',mfa:'signed fixture only',runtime:'compiled Worker and isolated D1',passedAt:new Date().toISOString()};writeFileSync('.sites-runtime/identity-http-results.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await mf.dispose();}
