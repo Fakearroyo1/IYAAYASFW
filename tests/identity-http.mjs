@@ -116,6 +116,7 @@ try{
  const blankPreview=await post(admin,{action:'importPreview',csv:templateBody.csv});
  check(blankPreview.status===200&&(await blankPreview.json()).rows.every(row=>row.status==='Unchanged'),'blank roster template previews without granting or changing access');
  const second=browser('admin.test.local');second.access=await token('second-subject');await context(second);await post(second,{action:'adminLogin'});await context(second);
+ check((await context(second)).c.management.identityHref===null,'commerce-only administrator is not offered owner-only account tools');
  check((await post(second,{action:'adminRead',query:''})).status===403,'second commerce administrator cannot grant new identities');
  check((await post(second,{action:'importTemplate'})).status===403,'second commerce administrator cannot export identity template');
  check((await request(second.host,'/api/pilot',undefined,headers(second))).status===200,'second administrator retains commerce access');

@@ -51,7 +51,7 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
    let browser=cookieValue(request,BROWSER);const cookies:string[]=[];
    if(!/^[A-Za-z0-9_-]{43}$/.test(browser)){browser=random();cookies.push(cookie(BROWSER,browser,1800));}
    const administrator=user&&!!await one(db,"SELECT 1 FROM members WHERE id=? AND role='admin' AND active=1",user.memberId);
-   const management=administrator?{href:(await usesAdminHost(db,env,user!.memberId)?c.admin:c.member)+'/?view=admin',identityHref:c.admin+'/?view=admin&section=identity'}:null;
+   const management=administrator?{href:(await usesAdminHost(db,env,user!.memberId)?c.admin:c.member)+'/?view=admin',identityHref:user!.memberId===env.IDENTITY_OWNER_MEMBER_ID?c.admin+'/?view=admin&section=identity':null}:null;
    return json({enabled:true,host,origins:{member:c.member,auth:c.auth,register:c.register,admin:c.admin},methods:c.methods,management,csrf:csrfToken(request,browser),user:user?{name:user.displayName,id:user.memberId,audience:user.audience}:null,owner:!!user&&user.memberId===env.IDENTITY_OWNER_MEMBER_ID&&host==='admin'},200,cookies);
   }
   if(request.method!=='POST')return json({error:'Method not allowed.'},405);
