@@ -2435,6 +2435,8 @@ export default function Pilot() {
         )}
         <footer>
           <span>IYAAYASFW · Unit Supply</span>
+          <a className="text-link" href="https://iyaayasfw.com/about">About the app</a>
+          <a className="text-link" href="https://iyaayasfw.com/privacy">Privacy policy</a>
           <a
             className="text-link"
             href="mailto:snackbar@iyaayasfw.com?subject=Unit%20Supply%20help"

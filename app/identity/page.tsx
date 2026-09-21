@@ -124,7 +124,7 @@ export default function IdentityPage({embedded=false}:{embedded?:boolean}={}){
     </>}
    </section>}
    {privateInvite&&<section className="identity-block"><h2>Private invitation — shown once</h2><p>Share individually with the verified member. Do not post it in a group or include it in an issue report.</p><textarea readOnly value={privateInvite.url} rows={3} aria-label="Private invitation link"/><Button variant="outline" onClick={()=>run(async()=>{await navigator.clipboard.writeText(privateInvite.url);setMessage('Private link copied.');})}>Copy private link</Button><Button variant="ghost" onClick={()=>setPrivateInvite(null)}>Hide link</Button></section>}
-   <nav className="identity-links"><a href={context.origins.member}>Store</a><a href={context.origins.member+'/login?password=1'}>Existing password</a>{context.host==='admin'?<a href="/?view=admin">Commerce management</a>:<a href={context.origins.admin+'/identity'}>Management</a>}</nav>
+   <nav className="identity-links"><a href={context.origins.member}>Store</a><a href={context.origins.member+'/login?password=1'}>Existing password</a>{context.host==='admin'?<a href="/?view=admin">Commerce management</a>:<a href={context.origins.admin+'/identity'}>Management</a>}<a href={context.origins.member+'/about'}>About the app</a><a href={context.origins.member+'/privacy'}>Privacy policy</a></nav>
   </>}
   {error&&<p className="notice error" role="alert">{error}</p>}{message&&<p className="notice" role="status">{message}</p>}{busy&&<p role="status">Please wait…</p>}
   <p className="fine">Need help? Contact Jake through a known contact method. Never share passwords, private invitation links, recovery codes, or sign-in screenshots containing them.</p>

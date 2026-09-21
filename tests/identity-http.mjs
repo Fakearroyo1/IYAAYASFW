@@ -32,11 +32,14 @@ try{
  await db.prepare("INSERT INTO members(id,email,name,role,debt,credit) VALUES('owner','owner@example.test','Owner','admin',0,0),('second-admin','second@example.test','Second admin','admin',0,0),('member','member@example.test','Member','member',725,250)").run();
  await db.prepare("INSERT INTO settings(id) VALUES('main')").run();
  for(const id of ['owner','second-admin','member'])await db.prepare('INSERT INTO auth_credentials VALUES(?,?,?)').bind(id,hash,Date.now()).run();
- for(const path of ['/about','/privacy']){
+ for(const path of ['/','/about','/privacy']){
   const publicPage=await request(domain,path),html=await publicPage.text();
-  check(publicPage.status===200&&html.includes('IYAAYASFW member login'),'public branding page loads without a session: '+path);
+  check(publicPage.status===200&&!publicPage.headers.has('location')&&html.includes('IYAAYASFW member login'),'public branding page loads without a session or redirect: '+path);
+  check(!html.includes('owner@example.test')&&!html.includes('member@example.test')&&!html.includes('Your balance'),'public page does not render member account data: '+path);
  }
- check((await request(domain,'/')).status===307,'store homepage remains protected');
+ check((await request(domain,'/api/pilot')).status===401,'public homepage does not unlock store API');
+ const rootHtml=await (await request(domain,'/')).text();
+ check(rootHtml.includes('Why we request Google account information')&&rootHtml.includes('Member sign-in')&&!rootHtml.includes('mobile-bag'),'anonymous root explains the app without rendering the store');
  const entry=await request(domain,'/login?next=/products/synthetic-item'),entryLocation=new URL(entry.headers.get('location'));
  check(entry.status===303&&entryLocation.origin==='https://auth.test.local'&&entryLocation.pathname==='/identity','default login goes directly to the auth host');
  const destinationCookie=entry.headers.get('set-cookie');
@@ -62,6 +65,8 @@ try{
  check((await post(member,{action:'start'},{'x-identity-csrf':'wrong'})).status===403,'wrong CSRF rejected');
  check((await request(domain,'/api/auth',{action:'login',email:'member@example.test',password,challengeToken:'synthetic-challenge'})).status===403,'legacy mutation also requires identity CSRF');
  const login=await request(domain,'/api/auth',{action:'login',email:'member@example.test',password,challengeToken:'synthetic-challenge'},{...headers(member),'x-identity-csrf':member.csrf});saveCookies(member,login);check(login.status===200,'legacy password remains usable');await context(member);
+ const signedHome=await request(domain,'/',undefined,headers(member)),signedHtml=await signedHome.text();
+ check(signedHome.status===200&&signedHtml.includes('Email the store team')&&!signedHtml.includes('Why we request Google account information'),'signed-in root still renders the store');
  const signedEntry=await request(domain,'/login?next=/products/synthetic-item',undefined,headers(member));
  check(signedEntry.status===303&&signedEntry.headers.get('location')==='https://test.local/products/synthetic-item'&&!signedEntry.headers.has('set-cookie'),'signed-in member keeps the requested page without a new identity flow');
  const own=await post(member,{action:'account'});check(own.status===200&&(await own.json()).hasPassword,'existing account preserved');

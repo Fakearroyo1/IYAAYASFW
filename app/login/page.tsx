@@ -280,6 +280,7 @@ export default function Login() {
           </Button>
         )}
         <p className="fine">Pickup only · Access by approved email.</p>
+        <nav className="identity-links" aria-label="App information"><a href="/about">About the app</a><a href="/privacy">Privacy policy</a></nav>
         {mode === "login" ? (
           <p className="fine">
             Sessions expire automatically. Administrators sign in more often to
