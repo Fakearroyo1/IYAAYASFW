@@ -29,6 +29,7 @@ export default function IdentityPage(){
   if(invitation)setInvite(invitation);
   if(code&&completedFlow){follow(await api({action:'complete',code,flow:completedFlow}));return;}
   const bridgeId=url.searchParams.get('bridge');if(bridgeId)setBridge(bridgeId);
+  if(ctx.host==='member'&&!ctx.user&&!bridgeId&&!invitation){window.location.replace('/login?next=/identity');return;}
   const flowId=url.searchParams.get('flow');if(flowId){
    const adopted=(await api({action:'adopt',flow:flowId})).flow;setFlow(adopted);
    const selected=url.searchParams.get('method');
@@ -65,7 +66,7 @@ export default function IdentityPage(){
  return <main className="identity-shell"><section className="panel identity-panel">
   <header className="identity-heading"><a href={context?.origins?.member||'/'} className="brand"><BrandMark/><span>IYAAYASFW<span className="brand-sub">Member access</span></span></a><ThemeToggle/></header>
   <h1>{context?.host==='admin'?'Access management':context?.host==='register'?'Add a sign-in method':context?.user?'Your sign-in methods':'Sign in to Unit Supply'}</h1>
-  {!context?<p>Loading…</p>:!context.enabled?<><p>This update is not enabled yet. Your existing password still works.</p><a href="/login">Use existing password</a></>:<>
+  {!context?<p>Loading…</p>:!context.enabled?<><p>This update is not enabled yet. Your existing password still works.</p><a href="/login?password=1">Use existing password</a></>:<>
    {context.user&&<p>Signed in as <strong>{context.user.name}</strong>. Your account and purchase history stay the same when you add a method.</p>}
    {context.host==='admin'&&!context.user&&<><p>Complete sign-in with your approved administrator account.</p><Button disabled={busy} onClick={()=>run(async()=>follow(await api({action:'adminLogin'})))}>Enter management</Button></>}
    {bridge&&<><p>Continue this private invitation in this browser. If you are signed in as a different member, sign out first.</p><Button disabled={busy} onClick={()=>run(async()=>follow(await api({action:'bridge',flow:bridge})))}>Continue invitation</Button></>}
@@ -82,9 +83,10 @@ export default function IdentityPage(){
      {flow.hasPassword&&<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void run(async()=>follow(await api({action:'passwordProof',flow:flow.id,password:f.get('password')})));}}><label className="field">Existing password<Input type="password" name="password" autoComplete="current-password" maxLength={128} required/></label><Button disabled={busy} variant="outline">Verify existing password</Button></form>}
     </>}
    </section>}
-   {!flow&&!invite&&!bridge&&!context.user&&context.host==='member'&&<><p>Use a method already linked to your approved membership.</p>{choices()}<p><a href="/login">Use existing password</a></p></>}
+   {!flow&&!invite&&!bridge&&!context.user&&context.host==='member'&&<p>Opening sign-in…</p>}
+   {flow?.purpose==='login'&&context.host==='auth'&&<p><a href={context.origins.member+'/login?password=1&next='+encodeURIComponent(flow.returnPath||'/')}>Use existing password</a></p>}
    {!flow&&!invite&&context.host==='register'&&<p>A private invitation or fresh verification of an existing method is required. Ask Jake for help if you cannot sign in.</p>}
-   {!flow&&context.host==='auth'&&<p><a href={context.origins.member+'/identity'}>Start a new sign-in</a></p>}
+   {!flow&&context.host==='auth'&&<p><a href={context.origins.member+'/login'}>Start a new sign-in</a></p>}
    {approval&&<section className="identity-block"><h2>Confirm the verified change</h2>{approval.payload?<dl>{Object.entries(approval.payload).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{Array.isArray(v)?v.join(', '):String(v)}</dd></div>)}</dl>:<p>Remove the selected sign-in method. Another usable method must remain.</p>}<Button disabled={busy} onClick={()=>run(confirmApproval)}>Confirm change</Button></section>}
    {account&&context.host==='member'&&<>
     <section className="identity-block"><h2>Linked methods</h2>{account.hasPassword&&<p>Existing password · available</p>}{account.methods.map((m:Row)=><div className="identity-row" key={m.id}><span><strong>{m.label}</strong><small>{names[m.kind as Method]} · {m.status}{m.observed_email?' · '+m.observed_email:''}</small></span>{m.status==='active'&&<div>{m.kind==='passkey'&&<Button variant="ghost" disabled={busy} onClick={()=>{const label=window.prompt('Passkey name',m.label);if(label)void run(async()=>{await api({action:'own',operation:'rename',target:m.id,label});await refreshAccount();});}}>Rename</Button>}<Button variant="ghost" disabled={busy} onClick={()=>run(()=>start('unlink:'+m.id))}>Remove</Button></div>}</div>)}<p>Adding a backup method is recommended. You can keep using your existing password.</p><div className="identity-choices">{(Object.keys(names) as Method[]).map(m=><Button key={m} variant="outline" disabled={busy||!context.methods[m]} onClick={()=>run(()=>start('add:'+m))}>Add {names[m]}</Button>)}</div></section>
@@ -107,7 +109,7 @@ export default function IdentityPage(){
     {preview&&<><div className="identity-table"><table><thead><tr><th>Apply</th><th>Member</th><th>Result</th><th>Exact changes</th></tr></thead><tbody>{preview.rows.map((r:Row)=><tr key={r.number}><td><input aria-label={'Apply row '+r.number} type="checkbox" disabled={r.errors.length>0} checked={selectedRows.includes(r.number)} onChange={e=>setSelectedRows(v=>e.target.checked?[...v,r.number]:v.filter(n=>n!==r.number))}/></td><td>{r.name}<small>{r.memberId}</small></td><td>{r.status}</td><td>{r.errors.join('; ')||r.changes.join('; ')||'No new authority'}{r.grants.map((g:Row)=><small key={g.provider}>{g.provider}: {g.raw} → {g.match}{g.create?' (new grant)':' (existing reservation preserved)'}</small>)}</td></tr>)}</tbody></table></div><Button disabled={busy||!selectedRows.length} onClick={()=>run(()=>requestOwner({operation:'importCommit',batch:preview.batch,hash:preview.hash,rows:selectedRows}))}>Verify &amp; apply selected rows</Button></>}
    </section>}
    {privateInvite&&<section className="identity-block"><h2>Private invitation — shown once</h2><p>Share individually with the verified member. Do not post it in a group or include it in an issue report.</p><textarea readOnly value={privateInvite.url} rows={3} aria-label="Private invitation link"/><Button variant="outline" onClick={()=>run(async()=>{await navigator.clipboard.writeText(privateInvite.url);setMessage('Private link copied.');})}>Copy private link</Button><Button variant="ghost" onClick={()=>setPrivateInvite(null)}>Hide link</Button></section>}
-   <nav className="identity-links"><a href={context.origins.member}>Store</a><a href={context.origins.member+'/login'}>Existing password</a>{context.host==='admin'?<a href="/?view=admin">Commerce management</a>:<a href={context.origins.admin+'/identity'}>Management</a>}</nav>
+   <nav className="identity-links"><a href={context.origins.member}>Store</a><a href={context.origins.member+'/login?password=1'}>Existing password</a>{context.host==='admin'?<a href="/?view=admin">Commerce management</a>:<a href={context.origins.admin+'/identity'}>Management</a>}</nav>
   </>}
   {error&&<p className="notice error" role="alert">{error}</p>}{message&&<p className="notice" role="status">{message}</p>}{busy&&<p role="status">Please wait…</p>}
   <p className="fine">Need help? Contact Jake through a known contact method. Never share passwords, private invitation links, recovery codes, or sign-in screenshots containing them.</p>

@@ -11,7 +11,7 @@ Target: September 21, 2026 at 8:00 AM Eastern. **Do not begin team testing until
 
 ## Add and try each method
 
-1. Sign in with your existing password. Open **Linked methods** beneath the store header or in **My account**.
+1. Sign-in opens `auth.iyaayasfw.com`, where Google, Personal Microsoft and Passkey appear together. Choose **Use existing password** to sign in with your snackbar password. Open **Linked methods** beneath the store header or in **My account**.
 2. Choose **Add Google**. Verify an existing method when asked, select your Google account, and confirm the addition to your displayed membership.
 3. Sign out. Choose **Google** and check that your name and existing purchase history are correct.
 4. Repeat with **Add Personal Microsoft** using a personal Microsoft account. Work, school, military, and government accounts are outside this test.

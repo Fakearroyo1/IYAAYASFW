@@ -1,6 +1,6 @@
 import {readJson,RequestError} from '../security/http';
 import {rateLimit,sessionCookie} from '../auth/session';
-import {BROWSER,DESTINATION,ADMIN_COOKIE,config,cookie,cookieValue,csrfToken,verifyCsrf,browserHash,digest,random,same,text,method,fail,flow,sql,one,all,requireRolloutMember,freshMethods,type IdentitySettings,type Flow,type Credential} from './common';
+import {BROWSER,DESTINATION,ADMIN_COOKIE,config,cookie,cookieValue,csrfToken,verifyCsrf,browserHash,digest,random,same,text,method,fail,flow,sql,one,all,requireRolloutMember,freshMethods,safeReturn,type IdentitySettings,type Flow,type Credential} from './common';
 import {readSession,accessPrincipal,adminSession,requireOwner,type IdentityUser,type AccessPrincipal} from './sessions';
 import {newFlow,adoptFlow,boundFlow,grantFor,claimInvite,bridgeInvite,associateProvider,storeEnrollmentProof,finishEnrollment,freshPassword,authenticated,issueHandoff,redeem} from './flows';
 import {startProvider,finishProvider,startPasskey,finishPasskey} from './providers';
@@ -8,21 +8,33 @@ import {ownMethods,ownMutation,adminRead,adminMutation,payloadHash} from './mana
 import {previewImport,commitImport} from './imports';
 type Runtime=IdentitySettings&{DB?:D1Database};
 const json=(value:unknown,status=200,cookies:string[]=[])=>{const headers=new Headers({'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','Content-Type':'application/json;charset=utf-8'});for(const c of cookies)headers.append('Set-Cookie',c);return new Response(JSON.stringify(value),{status,headers});};
-const redirect=(url:string)=>new Response(null,{status:303,headers:{Location:url,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});
+const redirect=(url:string,cookies:string[]=[])=>{const headers=new Headers({Location:url,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'});for(const value of cookies)headers.append('Set-Cookie',value);return new Response(null,{status:303,headers});};
 export function identityHost(env:IdentitySettings,url:URL){const c=config(env);return url.origin===c.member?'member':url.origin===c.auth?'auth':url.origin===c.register?'register':url.origin===c.admin?'admin':null;}
 async function displayedFlow(db:D1Database,env:IdentitySettings,f:Flow){
  let target:string|null=null,proof:{kind:string;email:string|null}|null=null;
  if(f.member_id&&f.purpose==='enroll')target=(await one<{name:string}>(db,'SELECT name FROM members WHERE id=?',f.member_id))?.name||null;
  if(f.proof&&f.purpose==='enroll'){const p=JSON.parse(f.proof);proof={kind:p.kind,email:p.email||null};}
- return{id:f.id,purpose:f.purpose,status:f.status,action:f.action,target,proof,proofId:proof?digest(f.proof!):null,review:f.proof==='"review"',freshMethods:f.purpose==='fresh'?await freshMethods(db,env,f):null,hasPassword:f.purpose==='fresh'&&!!await one(db,'SELECT 1 FROM auth_credentials WHERE member_id=?',f.member_id)};
+ return{id:f.id,purpose:f.purpose,status:f.status,action:f.action,target,proof,proofId:proof?digest(f.proof!):null,returnPath:f.return_path,review:f.proof==='"review"',freshMethods:f.purpose==='fresh'?await freshMethods(db,env,f):null,hasPassword:f.purpose==='fresh'&&!!await one(db,'SELECT 1 FROM auth_credentials WHERE member_id=?',f.member_id)};
 }
 export async function identityRoute(request:Request,env:Runtime,principal?:AccessPrincipal):Promise<Response|null>{
  const url=new URL(request.url),c=config(env),host=identityHost(env,url);
  if(!c.enabled)return url.pathname==='/identity/api'&&request.method==='GET'?json({enabled:false}):url.pathname.startsWith('/identity')||url.pathname.startsWith('/oidc/')?json({error:'New sign-in methods are not enabled yet.'},404):null;
  if(!host)return json({error:'Unknown application host.'},421);
- if(url.pathname!=='/identity/api'&&!url.pathname.startsWith('/oidc/'))return null;
+ const loginEntry=host==='member'&&url.pathname==='/login'&&request.method==='GET'&&url.searchParams.get('password')!=='1';
+ if(!loginEntry&&url.pathname!=='/identity/api'&&!url.pathname.startsWith('/oidc/'))return null;
  try{
   if(!env.DB)fail('Sign-in is temporarily unavailable.',503);const db=env.DB!;
+  if(loginEntry){
+   const next=safeReturn(url.searchParams.get('next'));
+   if(await readSession(db,request,'member'))return redirect(c.member+next);
+   const ip=request.headers.get('cf-connecting-ip')||'unknown';
+   if(!await rateLimit(db,'identity-start:'+ip,180,900000))fail('Too many sign-in starts. Try again later.',429);
+   // A top-level login navigation may initialize an anonymous flow, but cannot
+   // prove identity or authorize an account change. Bind its return to a fresh
+   // host-only destination cookie before showing choices on the auth host.
+   const destination=random(),flowId=await newFlow(db,digest(destination),next);
+   return redirect(c.auth+'/identity?flow='+encodeURIComponent(flowId),[cookie(DESTINATION,destination)]);
+  }
   if(url.pathname.startsWith('/oidc/')){
    if(host!=='auth'||request.method!=='GET')return json({error:'Not found.'},404);
    const provider=url.pathname==='/oidc/google/callback'?'google':url.pathname==='/oidc/microsoft/callback'?'microsoft':null;if(!provider)return json({error:'Not found.'},404);

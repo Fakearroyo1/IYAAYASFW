@@ -69,6 +69,7 @@ export default {
           if(path==='/login')response=Response.redirect(identity.admin+'/identity',303);
         }
         if((host==='auth'||host==='register')&&path==='/')response=Response.redirect(url.origin+'/identity',303);
+        if(host==='auth'&&path==='/identity'&&request.method==='GET'&&!url.searchParams.has('flow')&&!url.searchParams.has('error'))response=Response.redirect(identity.member+'/login?next='+encodeURIComponent(url.searchParams.get('next')||'/'),303);
         if(path==='/api/admin/access'&&(env.IDENTITY_ROLLOUT==='all-approved'||host!=='member'))response=host==='member'?Response.redirect(identity.admin+'/identity',303):new Response('Use administrator sign-in.',{status:405});
         if(request.method==='POST'&&write)verifyCsrf(request);
       }
