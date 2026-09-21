@@ -45,7 +45,12 @@ try{
  const flowId=new URL(flowResult.next).searchParams.get('flow'),register=browser('register.test.local'),auth=browser('auth.test.local');await context(register);await context(auth);
  check((await post(register,{action:'adopt',flow:flowId})).status===200,'registration browser binds before proof');
  check((await post(register,{action:'continueFresh',flow:flowId})).status===200,'fresh proof sends browser to auth');
- check((await post(auth,{action:'adopt',flow:flowId})).status===200,'auth browser binds');
+ const adopted=await post(auth,{action:'adopt',flow:flowId}),freshView=(await adopted.json()).flow;
+ check(adopted.status===200,'auth browser binds');
+ check(freshView.hasPassword&&freshView.freshMethods.length===0,'fresh verification offers only the existing password for an unlinked member');
+ check((await post(auth,{action:'provider',flow:flowId,method:'google'})).status===403,'unlinked Google cannot start fresh verification');
+ check((await post(auth,{action:'passkeyOptions',flow:flowId})).status===403,'unlinked passkey cannot start fresh verification');
+ check((await db.prepare('SELECT count(*) n FROM identity_ceremonies WHERE flow_id=?').bind(flowId).first()).n===0,'rejected unlinked choices create no external ceremony');
  const other=browser('auth.test.local');await context(other);check((await post(other,{action:'adopt',flow:flowId})).status===403,'another auth browser cannot adopt flow');
  const proof=await post(auth,{action:'passwordProof',flow:flowId,password}),proofBody=await proof.json();check(proof.status===200,'fresh existing password accepted');
  const fragment=new URLSearchParams(new URL(proofBody.next).hash.slice(1));

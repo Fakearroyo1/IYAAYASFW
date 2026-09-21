@@ -2018,6 +2018,7 @@ export default function Pilot() {
           </Button>
         </div>
       </header>
+      <IdentityLinks compact/>
       <main id="main" className="main">
         {loading ? (
           <div className="notice" role="status">

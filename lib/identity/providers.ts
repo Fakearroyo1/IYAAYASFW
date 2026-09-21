@@ -1,6 +1,6 @@
 import * as oidc from 'openid-client';
 import {generateAuthenticationOptions,generateRegistrationOptions,verifyAuthenticationResponse,verifyRegistrationResponse,type AuthenticationResponseJSON,type RegistrationResponseJSON} from '@simplewebauthn/server';
-import {config,fail,random,digest,sql,one,atomic,guard,flowGuard,member,all,matchEmail,audit,type IdentitySettings,type Method,type Flow,type Credential} from './common';
+import {config,fail,random,digest,sql,one,atomic,guard,flowGuard,member,all,matchEmail,audit,freshMethods,type IdentitySettings,type Method,type Flow,type Credential} from './common';
 
 export const CONSUMER_TENANT='9188040d-6c67-4c5b-b112-36a304b66dad';
 export const ISSUERS={google:'https://accounts.google.com',microsoft:`https://login.microsoftonline.com/${CONSUMER_TENANT}/v2.0`};
@@ -39,6 +39,7 @@ export async function consumeCeremony(db:D1Database,token:string,kind:string,bro
   return{flowId:row!.flow_id,secret:JSON.parse(row!.secret!) as Record<string,string>};
 }
 export async function startProvider(db:D1Database,env:IdentitySettings,f:Flow,provider:'google'|'microsoft',browser:string){
+  if(f.purpose==='fresh'&&!(await freshMethods(db,env,f)).includes(provider))fail('Verify with your existing password or an already linked method before adding this method.',403);
   const {client,callback}=providerClient(env,provider),verifier=oidc.randomPKCECodeVerifier(),nonce=oidc.randomNonce();
   const state=await saveCeremony(db,f,provider,browser,{verifier,nonce,fresh:f.purpose==='fresh'?'true':'false'},600000);
   const url=oidc.buildAuthorizationUrl(client,{redirect_uri:callback,scope:'openid email profile',response_type:'code',state,nonce,code_challenge:await oidc.calculatePKCECodeChallenge(verifier),code_challenge_method:'S256',...(f.purpose==='fresh'?{max_age:'0',prompt:provider==='microsoft'?'login':'select_account'}:{prompt:'select_account'})});
@@ -48,12 +49,30 @@ export async function finishProvider(db:D1Database,env:IdentitySettings,url:URL,
   const state=url.searchParams.get('state');if(!state||state.length>100)fail();
   const ceremony=await consumeCeremony(db,state!,provider,browser),{client,clientId,callback}=providerClient(env,provider);
   if(url.origin+url.pathname!==callback)fail();
-  const tokens=await oidc.authorizationCodeGrant(client,url,{expectedState:state!,expectedNonce:ceremony.secret.nonce,pkceCodeVerifier:ceremony.secret.verifier,idTokenExpected:true,...(ceremony.secret.fresh==='true'?{maxAge:300}:{})});
+  const tokens=await oidc.authorizationCodeGrant(client,url,{expectedState:state!,expectedNonce:ceremony.secret.nonce,pkceCodeVerifier:ceremony.secret.verifier,idTokenExpected:true,...(ceremony.secret.fresh==='true'?{maxAge:300}:{})}).catch(async error=>{
+    // One record per consumed, browser-bound ceremony. Only fixed categories;
+    // never persist provider messages, claims, URLs, codes or error causes.
+    const category=providerErrorCategory(error);
+    await audit(db,'authentication-attempt','provider_callback_rejected',provider,{category,fresh:ceremony.secret.fresh==='true'}).run();
+    fail(`Provider sign-in could not be verified (${category}). Start again using an existing method.`,403);
+  });
   const claims=tokens.claims();if(!claims)fail();
   return {flowId:ceremony.flowId,proof:providerProof(provider,clientId,claims!,ceremony.secret.fresh==='true')};
 }
+export function providerErrorCategory(error:unknown){
+  if(error instanceof oidc.AuthorizationResponseError)return 'provider-declined';
+  if(error instanceof oidc.ResponseBodyError)return error.error==='invalid_client'?'client-configuration':error.error==='invalid_grant'?'code-rejected':'token-response';
+  if(error instanceof oidc.ClientError){
+    if(error.code==='OAUTH_TIMEOUT'||error.code==='OAUTH_ABORT')return 'provider-timeout';
+    if(error.code==='OAUTH_JWT_TIMESTAMP_CHECK_FAILED')return 'token-time';
+    if(error.code==='OAUTH_JWT_CLAIM_COMPARISON_FAILED')return 'token-claims';
+    if(error.code==='OAUTH_INVALID_RESPONSE')return 'invalid-response';
+  }
+  return 'provider-verification';
+}
 export async function startPasskey(db:D1Database,env:IdentitySettings,f:Flow,browser:string,registration:boolean){
   const c=config(env);if(!c.methods.passkey)fail('Passkeys are not available yet.',503);
+  if(f.purpose==='fresh'&&!(await freshMethods(db,env,f)).includes('passkey'))fail('Verify with your existing password or an already linked method before adding a passkey.',403);
   const m=registration?await member(db,f.member_id||''):null;
   const existing=m?await all<{credential_id:string}>(db,"SELECT credential_id FROM identity_credentials WHERE member_id=? AND kind='passkey'",m.id):[];
   const options=registration?await generateRegistrationOptions({rpID:c.domain,rpName:'IYAAYASFW Supply',userName:'Member '+m!.user_handle.slice(0,8),userDisplayName:m!.name,userID:new Uint8Array(Buffer.from(m!.user_handle,'hex')),attestationType:'none',authenticatorSelection:{residentKey:'required',userVerification:'required'},excludeCredentials:existing.map(v=>({id:v.credential_id})),timeout:300000}):await generateAuthenticationOptions({rpID:c.domain,userVerification:'required',timeout:300000});

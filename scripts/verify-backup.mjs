@@ -8,6 +8,18 @@ const plaintext=decryptBackup(readFileSync(args[0]),process.env.BACKUP_ENCRYPTIO
 const bundle=JSON.parse(plaintext);if(bundle.format!=='iyaayasfw-d1-v2')throw Error('A full-manifest database backup is required.');
 const db=restoreMemory(bundle.sql);try{
  const before=databaseManifest(db);if(compareManifests(bundle.manifest,before).length)throw Error('Restored database does not match its full manifest.');
+ let priorBusinessState='not compared';
+ if(option('--baseline')){
+  const prior=JSON.parse(decryptBackup(readFileSync(option('--baseline')),process.env.BACKUP_ENCRYPTION_KEY).toString('utf8'));
+  if(prior.format!=='iyaayasfw-d1-v2')throw Error('Invalid baseline backup format.');
+  // These operational tables legitimately change during sign-in and cleanup.
+  // Every other preexisting table/view, including members and all business
+  // history, must match. A concurrent commerce write requires human review.
+  const transient=new Set(['auth_sessions','auth_limits','auth_admin_access','guards']);
+  const changed=compareManifests(prior.manifest,before,{schema:false}).filter(name=>!transient.has(name));
+  if(changed.length)throw Error('Preexisting business-state reconciliation needs review: '+changed.join(', '));
+  priorBusinessState='all preexisting non-session/rate-limit tables and views matched';
+ }
  let assetCount=0,referenceCount=0;
  if(option('--assets')){
   const assets=JSON.parse(decryptBackup(readFileSync(option('--assets')),process.env.BACKUP_ENCRYPTION_KEY).toString('utf8'));
@@ -35,6 +47,6 @@ const db=restoreMemory(bundle.sql);try{
   if(target){db.prepare('UPDATE members SET active=0 WHERE id=?').run(target.id);db.prepare('UPDATE members SET active=1 WHERE id=?').run(target.id);if(db.prepare('SELECT count(*) n FROM auth_setup WHERE member_id=?').get(target.id).n||db.prepare('SELECT count(*) n FROM auth_recovery WHERE member_id=?').get(target.id).n||db.prepare('SELECT count(*) n FROM auth_sessions WHERE member_id=?').get(target.id).n)throw Error('Restored containment left pending access.');}
   migration='repeat application preserves all prior tables/views; isolated containment revokes pending access';
  }
- const result={isolatedRestore:'passed',environment:'memory only, no server or remote writes',tables:Object.values(before.objects).filter(x=>x.type==='table').length,views:Object.values(before.objects).filter(x=>x.type==='view').length,allTableAndViewDigests:'matched',immutableMemberAndBalanceState:'matched',schemaAndForeignKeys:'passed',assets:assetCount,imageReferences:referenceCount,migration,verifiedAt:new Date().toISOString()};
+ const result={isolatedRestore:'passed',environment:'memory only, no server or remote writes',tables:Object.values(before.objects).filter(x=>x.type==='table').length,views:Object.values(before.objects).filter(x=>x.type==='view').length,allTableAndViewDigests:'matched',immutableMemberAndBalanceState:'matched',priorBusinessState,schemaAndForeignKeys:'passed',assets:assetCount,imageReferences:referenceCount,migration,verifiedAt:new Date().toISOString()};
  writeFileSync(args[0]+'.verification.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{db.close()}

@@ -1,6 +1,6 @@
 import {readJson,RequestError} from '../security/http';
 import {rateLimit,sessionCookie} from '../auth/session';
-import {BROWSER,DESTINATION,ADMIN_COOKIE,config,cookie,cookieValue,csrfToken,verifyCsrf,browserHash,digest,random,same,text,method,fail,flow,sql,one,all,requireRolloutMember,type IdentitySettings,type Flow,type Credential} from './common';
+import {BROWSER,DESTINATION,ADMIN_COOKIE,config,cookie,cookieValue,csrfToken,verifyCsrf,browserHash,digest,random,same,text,method,fail,flow,sql,one,all,requireRolloutMember,freshMethods,type IdentitySettings,type Flow,type Credential} from './common';
 import {readSession,accessPrincipal,adminSession,requireOwner,type IdentityUser,type AccessPrincipal} from './sessions';
 import {newFlow,adoptFlow,boundFlow,grantFor,claimInvite,bridgeInvite,associateProvider,storeEnrollmentProof,finishEnrollment,freshPassword,authenticated,issueHandoff,redeem} from './flows';
 import {startProvider,finishProvider,startPasskey,finishPasskey} from './providers';
@@ -10,11 +10,11 @@ type Runtime=IdentitySettings&{DB?:D1Database};
 const json=(value:unknown,status=200,cookies:string[]=[])=>{const headers=new Headers({'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','Content-Type':'application/json;charset=utf-8'});for(const c of cookies)headers.append('Set-Cookie',c);return new Response(JSON.stringify(value),{status,headers});};
 const redirect=(url:string)=>new Response(null,{status:303,headers:{Location:url,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});
 export function identityHost(env:IdentitySettings,url:URL){const c=config(env);return url.origin===c.member?'member':url.origin===c.auth?'auth':url.origin===c.register?'register':url.origin===c.admin?'admin':null;}
-async function displayedFlow(db:D1Database,f:Flow){
+async function displayedFlow(db:D1Database,env:IdentitySettings,f:Flow){
  let target:string|null=null,proof:{kind:string;email:string|null}|null=null;
  if(f.member_id&&f.purpose==='enroll')target=(await one<{name:string}>(db,'SELECT name FROM members WHERE id=?',f.member_id))?.name||null;
  if(f.proof&&f.purpose==='enroll'){const p=JSON.parse(f.proof);proof={kind:p.kind,email:p.email||null};}
- return{id:f.id,purpose:f.purpose,status:f.status,action:f.action,target,proof,proofId:proof?digest(f.proof!):null,review:f.proof==='"review"',hasPassword:f.purpose==='fresh'&&!!await one(db,'SELECT 1 FROM auth_credentials WHERE member_id=?',f.member_id)};
+ return{id:f.id,purpose:f.purpose,status:f.status,action:f.action,target,proof,proofId:proof?digest(f.proof!):null,review:f.proof==='"review"',freshMethods:f.purpose==='fresh'?await freshMethods(db,env,f):null,hasPassword:f.purpose==='fresh'&&!!await one(db,'SELECT 1 FROM auth_credentials WHERE member_id=?',f.member_id)};
 }
 export async function identityRoute(request:Request,env:Runtime,principal?:AccessPrincipal):Promise<Response|null>{
  const url=new URL(request.url),c=config(env),host=identityHost(env,url);
@@ -68,7 +68,7 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
   }
   if(action==='adopt'||action==='flow'){
    if(host!=='auth'&&host!=='register')fail();const f=action==='adopt'?await adoptFlow(db,text(b.flow,100),browser,host):await boundFlow(db,text(b.flow,100),browser,host);
-   if(host==='register'&&f.purpose==='login')fail();return json({flow:await displayedFlow(db,f)});
+   if(host==='register'&&f.purpose==='login')fail();return json({flow:await displayedFlow(db,env,f)});
   }
   if(action==='continueFresh'){
    if(host!=='register')fail();const f=await boundFlow(db,text(b.flow,100),browser,'register');if(f.purpose!=='fresh'||!f.action?.startsWith('add:'))fail();return json({next:c.auth+'/identity?flow='+encodeURIComponent(f.id)});

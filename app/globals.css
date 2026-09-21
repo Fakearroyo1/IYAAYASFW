@@ -259,6 +259,8 @@ svg {
   align-items: center;
   gap: 10px;
 }
+.identity-shortcuts { display:flex; justify-content:flex-end; padding:0 max(16px, calc((100vw - 1344px) / 2)); border-bottom:1px solid var(--border); }
+.identity-shortcuts a { display:inline-flex; align-items:center; min-height:44px; font-size:13px; text-decoration:underline; }
 .main {
   max-width: 1344px;
   margin: 0 auto;

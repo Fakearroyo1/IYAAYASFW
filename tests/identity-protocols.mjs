@@ -40,6 +40,20 @@ try{
  {const {callback}=await begin();badSignature=true;await rejects(()=>P.finishProvider(db,env,callback,'google',browser),'invalid signature denied');badSignature=false;}
  {const {callback}=await begin();await rejects(()=>P.finishProvider(db,env,callback,'google',C.digest('other-browser')),'OIDC browser mismatch denied');await P.finishProvider(db,env,callback,'google',browser);checks++;}
  {const {callback}=await begin('microsoft');claims.tid='organizational-tenant';await rejects(()=>P.finishProvider(db,env,callback,'microsoft',browser),'organizational Microsoft account denied');}
+ const rejections=sqlite.prepare("SELECT detail FROM identity_audit WHERE event='provider_callback_rejected'").all().map(r=>JSON.parse(r.detail));
+ check(rejections.length>=5&&rejections.every(r=>Object.keys(r).sort().join(',')==='category,fresh'),'provider rejection audit stores only fixed category and fresh flag');
+ check(!JSON.stringify(rejections).match(/synthetic-provider-code|member@gmail|wrong-nonce|https:/),'provider diagnostic contains no code, claims, email or URL');
+ check(P.providerErrorCategory({message:'private-error',code:'private-code',cause:{token:'secret'}})==='provider-verification','unknown errors cannot inject diagnostic content');
+ const fid=await F.newFlow(db,destination,'/'),fresh={...await F.adoptFlow(db,fid,browser,'auth'),purpose:'fresh',member_id:'member'};
+ await rejects(()=>P.startProvider(db,env,fresh,'google',browser),'enabled but unlinked Google cannot verify a fresh change');
+ await rejects(()=>P.startPasskey(db,env,fresh,browser,false),'enabled but unlinked passkey cannot verify a fresh change');
+ const insert=F.credentialInsert(db,'member',{kind:'google',issuer:P.ISSUERS.google,subject:'pre-existing-proof',clientId:env.GOOGLE_CLIENT_ID,email:null,tenant:null,objectId:null},'fixture');await insert.statement.run();
+ sqlite.prepare('UPDATE identity_credentials SET created_at=? WHERE id=?').run(fresh.created_at-1,insert.credentialId);
+ check((await C.freshMethods(db,env,fresh)).join(',')==='google','pre-existing active Google with current client is offered');
+ check((await C.freshMethods(db,{...env,GOOGLE_CLIENT_ID:'changed-client'},fresh)).length===0,'old-client credential is not offered as proof');
+ check((await C.freshMethods(db,{...env,IDENTITY_GOOGLE_ENABLED:'false'},fresh)).length===0,'disabled provider is not offered as proof');
+ sqlite.prepare("UPDATE identity_credentials SET status='revoked' WHERE id=?").run(insert.credentialId);
+ check((await C.freshMethods(db,env,fresh)).length===0,'revoked credential is not offered as proof');
  check(requests.every(url=>!url.includes('graph.microsoft.com')),'no Graph or profile API permission/request');
 }finally{globalThis.fetch=originalFetch;}
 

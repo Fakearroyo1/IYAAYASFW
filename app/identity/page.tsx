@@ -29,7 +29,11 @@ export default function IdentityPage(){
   if(invitation)setInvite(invitation);
   if(code&&completedFlow){follow(await api({action:'complete',code,flow:completedFlow}));return;}
   const bridgeId=url.searchParams.get('bridge');if(bridgeId)setBridge(bridgeId);
-  const flowId=url.searchParams.get('flow');if(flowId)setFlow((await api({action:'adopt',flow:flowId})).flow);
+  const flowId=url.searchParams.get('flow');if(flowId){
+   const adopted=(await api({action:'adopt',flow:flowId})).flow;setFlow(adopted);
+   const selected=url.searchParams.get('method');
+   if(ctx.host==='auth'&&adopted.purpose!=='fresh'&&(selected==='google'||selected==='microsoft')&&ctx.methods[selected]){follow(await api({action:'provider',flow:flowId,method:selected}));return;}
+  }
   const approvalId=url.searchParams.get('approval');if(approvalId)setApproval({id:approvalId,...await api({action:'approval',approval:approvalId})});
   if(url.searchParams.get('error'))setError(url.searchParams.get('error')!.slice(0,200));
   if(ctx.user){setAccount(await api({action:'account'}));if(ctx.owner)setAdmin(await api({action:'adminRead',query:''}));}
@@ -47,7 +51,7 @@ export default function IdentityPage(){
    const result=await api({action:'passkeyVerify',flow:flow.id,ceremony:r.ceremony,response});if(result.reload)await reloadFlow();else follow(result);
   }catch(e){if(e instanceof Error&&e.name==='NotAllowedError')throw Error('Passkey sign-in was cancelled or no passkey was available. Try again or choose another method.');throw e;}
  }
- const choices=(enroll=false)=><div className="identity-choices">{(Object.keys(names) as Method[]).map(method=><Button key={method} type="button" variant="outline" disabled={busy||!context?.methods?.[method]} onClick={()=>run(()=>choose(method))}>{enroll?'Add ':''}{names[method]}{!context?.methods?.[method]?' · unavailable':''}</Button>)}</div>;
+ const choices=(enroll=false)=><div className="identity-choices">{(Object.keys(names) as Method[]).filter(method=>flow?.purpose!=='fresh'||flow.freshMethods?.includes(method)).map(method=><Button key={method} type="button" variant="outline" disabled={busy||!context?.methods?.[method]} onClick={()=>run(()=>choose(method))}>{enroll?'Add ':''}{names[method]}{!context?.methods?.[method]?' · unavailable':''}</Button>)}</div>;
  async function confirmApproval(){
   if(!approval)return;
   let r;if(approval.payload)r=await api({action:'admin',approval:approval.id,payload:approval.payload});
@@ -73,7 +77,7 @@ export default function IdentityPage(){
     </>:<>
      <h2>{flow.purpose==='fresh'?'Verify an existing method':flow.purpose==='enroll'?'Choose your new method':'Choose a sign-in method'}</h2>
      {flow.target&&<p>Invitation for <strong>{flow.target}</strong>. Stop and contact Jake if this is not you.</p>}
-     {flow.purpose==='fresh'&&<p>Use a method already linked to your account. This approval lasts five minutes and applies only to the requested change.</p>}
+     {flow.purpose==='fresh'&&<p>{flow.hasPassword&&!flow.freshMethods?.length?'Enter your existing account password below. After verification, you can add your new method.':'Use a method already linked to your account.'} This approval lasts five minutes and applies only to the requested change.</p>}
      {choices(flow.purpose==='enroll')}
      {flow.hasPassword&&<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void run(async()=>follow(await api({action:'passwordProof',flow:flow.id,password:f.get('password')})));}}><label className="field">Existing password<Input type="password" name="password" autoComplete="current-password" maxLength={128} required/></label><Button disabled={busy} variant="outline">Verify existing password</Button></form>}
     </>}
