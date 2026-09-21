@@ -1,8 +1,14 @@
 # Identity release candidate — September 21, 2026
 
-**Whitelist-controlled member beta is authorized and being prepared; full-release acceptance remains incomplete.** Target: 08:00 America/New_York. The owner authorized implementation, Cloudflare edits, protected backup/recovery and specific live tests on Jake's existing account, plus explicit Access mappings for Jake and Mason. No team messages or bulk invitations are authorized. Mason is unavailable; the owner deferred his test, so his mapping remains pending and the established administration path stays available.
+**Deployed for every active whitelisted member, including later additions. Full acceptance testing remains incomplete.** Target: 08:00 America/New_York. The owner authorized implementation, Cloudflare edits, protected backup/recovery and specific live tests on Jake's existing account, plus explicit Access mappings for Jake and Mason. No team messages or bulk invitations are authorized. Mason is unavailable; the owner deferred his test, so his mapping remains pending and the established administration path stays available.
 
-Previous deployed code: `820067b`, Worker version `9927857b-bb3c-413a-b570-995357b0dead`, at 09:40 UTC. [PR #17](https://github.com/Fakearroyo1/IYAAYASFW/pull/17) remains draft. [Linux CI run 68](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35584277544) passed all application suites, dependency audit and the complete history secret scan for this exact candidate. The scanner exception matches the exact public baseline commit value in two named evidence documents. Subsequent evidence-only commits do not change the deployed Worker.
+Deployed code: `6fdecad1b013ce312e1b7489f6db5fb9b405c9df`, Worker version
+`58627b35-57af-4bec-adff-d951a559a557`, at 20:10 UTC (16:10 Eastern).
+[PR #18](https://github.com/Fakearroyo1/IYAAYASFW/pull/18) at `14118f9` is merged into the
+approved release branch and is an ancestor of this deployed commit. [PR #17](https://github.com/Fakearroyo1/IYAAYASFW/pull/17)
+remains draft. [Exact-candidate Linux CI](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35648867576)
+passed the full application workflow, dependency audit and complete-history secret scan.
+Evidence-only follow-up commits do not change the deployed Worker.
 
 ## Readiness
 
@@ -16,7 +22,8 @@ Previous deployed code: `820067b`, Worker version `9927857b-bb3c-413a-b570-99535
 | Owner emergency account control | REAL TESTED / owner-attested | Owner reported account access good after the independent recovery rehearsal request; private authentication was not observed by the agent |
 | Legacy password and commerce | Locally tested | Final candidate CI and deployed owner smoke |
 | Sixty concurrent shared-NAT logins | MOCK-ONLY / compiled runtime passed | Final CI and deployed smoke; no production load test |
-| Roster-wide enablement | BLOCKED | All required real methods, admin, load and recovery checks |
+| Member feature availability | LIVE | Every active whitelisted member, including new manual/CSV additions; no second beta allowlist or deployment unlock |
+| Full acceptance and administrator migration | INCOMPLETE | Pending real device/admin/commerce tests and Mason mapping; these are not claimed passed by member enablement |
 
 New methods use maintained openid-client 6.8.8 and SimpleWebAuthn server 14.0.2/browser 14.0.0. Provider subjects and passkey IDs bind to existing immutable member IDs. Conservative Google bootstrap requires a separately granted authoritative address; Microsoft email bootstrap remains disabled. Explicit Microsoft linking does not assume an email match. Credentials, invites, actions and handoffs are one-use/current-state checked at transactional commit.
 
@@ -100,7 +107,7 @@ The owner requested a prominent sign-in button and an elegant landing page consi
 
 Full CI run 68 and the manual dry run passed. Deployment `22bb1a95-83bb-4ca2-ad77-1ab15b926e6e` reached 100% at 09:40 UTC. All 25 bindings and observability matched readback. Live root and `/about` show the new landing and sign-in link; `/privacy` remains public, login redirects to the auth chooser, private store data remains 401, auth-host store APIs remain 404 and administrator entry still redirects to Access. A live browser confirmed the rendered design with no console warnings/errors. Existing rollout gates remain in place.
 
-## PR #18 integration and whitelist-controlled member beta candidate
+## PR #18 integration and whitelist-controlled member deployment
 
 The owner approved deployment of PR #18 at `14118f9` and requested that the small
 member group test the complete deployed system, with no additional membership unlocks.
@@ -133,9 +140,45 @@ independent recovery. Android, desktop, Mason mapping/sign-in, real admin sessio
 denial and deployed commerce acceptance remain pending. Beta authorization is not proof
 that these tests passed. Google fresh account-change verification remains disabled.
 
-Local checks passed for the combined workspace and original PR #18 components. The
-final whitelist-stage candidate additionally runs typecheck/build, release/rollout checks
-and compiled HTTP checks before publication and exact-candidate Linux CI. A compiled
-synthetic browser preview verified per-member invitation navigation and both CSV modes
-at 390-pixel width, without horizontal overflow or console errors. Deployment evidence
-and final check counts are recorded after the candidate is published.
+Final local validation passed: typecheck/build, 26 rollout/race checks, 27 release-gate
+checks and 116 compiled identity HTTP checks. Earlier unchanged-feature checks passed
+62 identity, 132 importer, 74 synthetic protocol, 80 admin experience, 28 UI-contract,
+24 containment and 96 legacy authentication checks. Final Linux CI passed all suites
+on the exact deployed commit, including security, checkout/accounting and backup checks.
+
+A compiled isolated browser test created a synthetic member through Add member and
+confirmed immediate selection in invitation tools, without a First Time setup dialog.
+Per-member navigation and both CSV modes worked within Members & access at 390-pixel
+width, without horizontal overflow or browser console errors. These were synthetic
+local records, not production account changes or real provider/device evidence.
+
+The checked release configuration checksum was
+`df7addaaff6c33783da9fe3142a401eeebd28a7cadac0755d2d42fa5256af861`.
+Deployment `33b23886-4eb5-4379-b712-b49f4e5bac71` reached 100% at
+2026-09-21T20:10:27Z with Worker version `58627b35-57af-4bec-adff-d951a559a557`.
+The version tag exactly matches the deployed commit. Readback retained all 25 bindings;
+the only value change was `IDENTITY_ROLLOUT: owner-smoke → member-beta`. Observability,
+all four main hosts, D1/R2 and secret bindings matched; main/gear workers.dev and preview
+URLs remained disabled. Google fresh proof and automatic bootstrap remain disabled.
+No database migration or production import/invitation issuance was performed.
+
+At 20:11 UTC all 12 live route checks passed: public root/about/privacy, auth-host login
+entry and chooser, existing-password fallback, anonymous store API denial, auth-host API
+isolation, invitation entry, administrator Access redirect, gear and public identity
+context. The context reports the deployed member stage and all three enabled methods,
+while anonymous requests receive no member identity or registration authority.
+
+At 20:12 UTC the encrypted post-deployment snapshot and isolated restore also passed.
+Comparing all 102 tables and 10 views against the pre-release archive at the same clock
+time found changes only in `auth_limits` and `identity_flows`, consistent with the
+live sign-in route probes. Members, credentials, grants, financial history, all other
+stored records and all 21 images matched. All 18 previously unexpired sessions remained
+present with the same member and creation time. Production was not restored.
+
+Members can sign in with their existing password, open **Linked methods**, and verify
+that method to add Google, Personal Microsoft or a passkey. The owner uses
+**Members & access → Sign-in, invitations & CSV** for imports and private invitations.
+New active whitelist entries can enroll immediately through their invitation; no second
+rollout list or deployment change is required. Google fresh proof, Android/desktop,
+Mason migration, real admin expiry and deployed commerce acceptance retain their
+recorded pending/provider-blocked status.
