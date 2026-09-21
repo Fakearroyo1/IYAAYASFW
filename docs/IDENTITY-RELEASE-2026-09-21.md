@@ -9,9 +9,9 @@ Deployed candidate: `c0acdf5`, Worker version `756c190e-4899-430d-aa0d-d5843ab15
 | Area | Evidence status | Remaining gate |
 |---|---|---|
 | Google | REAL TESTED / DEPLOYED VERIFIED | After the fresh-choice fix, owner reported linking success. Live records show one active Google method on the existing owner member and completed enrollment/login after session revocation. Provider-based fresh reauthentication remains untested. |
-| Personal Microsoft | MOCK-ONLY | Same real checks; organizational accounts remain rejected |
+| Personal Microsoft | BLOCKED / REAL REGISTRATION ERROR | Microsoft returned unauthorized_client before callback. Verify Application client ID and personal-account audience in Entra, then repeat linking/login. Organizational accounts remain rejected. |
 | Passkeys | MOCK-ONLY | Real iPhone/Safari, Android/Chrome and desktop flows; both phones are available |
-| Administrator host | OWNER-REPORTED ACCESS SUCCESS AND PRIVATE-WINDOW BLOCK | Owner could not reach management without Cloudflare Access; exact factor-cancellation versus earlier sign-in denial is being clarified. Expiration and Mason mapping/test remain pending. |
+| Administrator host | REAL TESTED / OWNER-REPORTED SUCCESS AND MFA CANCELLATION DENIAL | Owner explicitly reached and canceled the security-key/biometric prompt in a private window; management remained inaccessible. Expiration and Mason mapping/test remain pending. |
 | Backup recovery | REAL TESTED / stale-access canaries | Full archive restore and closed-access stale snapshot rehearsal passed; refresh protected snapshot if data changes |
 | Owner emergency account control | REAL TESTED / owner-attested | Owner reported account access good after the independent recovery rehearsal request; private authentication was not observed by the agent |
 | Legacy password and commerce | Locally tested | Final candidate CI and deployed owner smoke |

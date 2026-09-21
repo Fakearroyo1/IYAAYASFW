@@ -11,7 +11,7 @@ Target: September 21, 2026 at 8:00 AM Eastern. **Do not begin team testing until
 
 ## Add and try each method
 
-1. Sign in with your existing password. Open **My account → Sign-in methods**.
+1. Sign in with your existing password. Open **Linked methods** beneath the store header or in **My account**.
 2. Choose **Add Google**. Verify an existing method when asked, select your Google account, and confirm the addition to your displayed membership.
 3. Sign out. Choose **Google** and check that your name and existing purchase history are correct.
 4. Repeat with **Add Personal Microsoft** using a personal Microsoft account. Work, school, military, and government accounts are outside this test.
@@ -24,7 +24,7 @@ Target: September 21, 2026 at 8:00 AM Eastern. **Do not begin team testing until
 
 - Only use a private invitation received directly from Jake through a known contact method. Check the displayed member before confirming. A used invitation must not work a second time.
 - A Google or Microsoft account that has never been linked or authorized should receive a review message, not another member's account.
-- In **Sign-in methods**, rename a passkey and inspect your sessions. Sign out one other session, then confirm it can no longer open private content.
+- In **Linked methods**, rename a passkey and inspect your sessions. Sign out one other session, then confirm it can no longer open private content.
 - **Sign out everywhere** should require every device to sign in again. This does not erase your history or unlink a method.
 - Removing a method requires fresh verification and another usable sign-in method. Keep a backup method; do not deliberately lose your last working method.
 - If all methods are lost, contact Jake through a known channel. Membership approval or knowledge of an email alone cannot recover access.
