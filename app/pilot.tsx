@@ -1,4 +1,6 @@
 "use client";
+import {secureFetch} from "@/lib/identity/client";
+import {IdentityLinks} from './store/identity-links';
 import { useEffect, useRef, useState } from "react";
 import {
   ShoppingBag,
@@ -231,7 +233,7 @@ export default function Pilot() {
               ? paymentFilter
               : "all",
       });
-      const r = await fetch("/api/pilot?" + q, { cache: "no-store" });
+      const r = await secureFetch("/api/pilot?" + q, { cache: "no-store" });
       const j = (await r.json()) as Row;
       if (r.status === 401) {
         window.location.replace("/login");
@@ -426,7 +428,7 @@ export default function Pilot() {
     const controller = new AbortController(),
       timeout = setTimeout(() => controller.abort(), 20000);
     try {
-      const r = await fetch("/api/pilot", {
+      const r = await secureFetch("/api/pilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
@@ -533,7 +535,7 @@ export default function Pilot() {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/auth", {
+      const r = await secureFetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -722,7 +724,7 @@ export default function Pilot() {
     try {
       const form = new FormData();
       form.set("image", file);
-      const response = await fetch("/api/product-images", {
+      const response = await secureFetch("/api/product-images", {
         method: "POST",
         body: form,
       });
@@ -922,6 +924,7 @@ export default function Pilot() {
           <div>
             <span className="eyebrow">Store management</span>
             <h1>Manage your store.</h1>
+            <IdentityLinks/>
             <p>Money, products, and people. Everything in its place.</p>
           </div>
           <div className="inline-actions">
@@ -1584,6 +1587,7 @@ export default function Pilot() {
           <div>
             <span className="eyebrow">{member.name}</span>
             <h1>My account.</h1>
+            <IdentityLinks/>
             <p>Your tab, credit, purchases, and preferences.</p>
           </div>
           <a

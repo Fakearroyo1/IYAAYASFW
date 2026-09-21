@@ -1,4 +1,5 @@
 "use client";
+import {secureFetch} from "@/lib/identity/client";
 import { BrandMark, ThemeToggle } from "@/app/store/appearance";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,16 @@ export default function Login() {
     widgetId = useRef<string | null>(null);
   const [challengeToken, setChallengeToken] = useState(""),
     [setupCode, setSetupCode] = useState("");
+  const [methods,setMethods]=useState<Record<string,boolean>|null>(null);
+  useEffect(()=>{void fetch('/identity/api',{cache:'no-store'}).then(r=>r.json() as Promise<{enabled:boolean;methods:Record<string,boolean>}>).then(c=>{if(c.enabled)setMethods(c.methods);}).catch(()=>{});},[]);
+  async function newMethod(method:string){
+    setBusy(true);setError('');
+    try{const r=await secureFetch('/identity/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',next:new URLSearchParams(window.location.search).get('next')||'/'})}),data=await r.json() as {error?:string;next:string};if(!r.ok)throw Error(data.error||'Sign-in could not start.');window.location.assign(data.next+(data.next.includes('?flow=')?'&method='+method:''));}
+    catch(e){setError(e instanceof Error?e.message:'Try again.');setBusy(false);}
+  }
   useEffect(() => {
     let disposed = false;
-    fetch("/api/auth")
+    secureFetch("/api/auth")
       .then((r) => r.json())
       .then((config: any) => {
         if (!config.siteKey)
@@ -82,7 +90,7 @@ export default function Login() {
           recovery: "completeRecovery",
         } as Record<string, string>
       )[mode];
-      const r = await fetch("/api/auth", {
+      const r = await secureFetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -141,7 +149,7 @@ export default function Login() {
         </h1>
         <p>
           {mode === "login"
-            ? "Sign in with your approved email and password."
+            ? methods?"Use a method already linked to your approved membership.":"Sign in with your approved email and password."
             : mode === "first"
               ? "Enter your approved email and the private setup code from your administrator."
               : mode === "recovery"
@@ -150,6 +158,7 @@ export default function Login() {
                   ? "Choose a password only you know. Your setup code can be used once."
                   : "Enter your account email. An administrator will receive a reset request inside the store."}
         </p>
+        {mode==='login'&&methods&&<><div className="identity-choices">{[['google','Google'],['microsoft','Personal Microsoft'],['passkey','Passkey']].map(([method,label])=><Button key={method} type="button" variant="outline" disabled={busy||!methods[method]} onClick={()=>void newMethod(method)}>{label}{!methods[method]?' · unavailable':''}</Button>)}</div><h2>Use existing password</h2></>}
         <form onSubmit={submit}>
           <fieldset disabled={busy}>
             <label className="field">

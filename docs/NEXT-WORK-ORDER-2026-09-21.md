@@ -1,5 +1,7 @@
 # Proposed work order — WO-01: retire legacy Pages publication
 
+Historical baseline proposal. The owner's subsequent **Next-Phase Team-Test Work Order** authorizes implementation and infrastructure work, and the owner separately approved permanent Pages deletion. Current status is recorded in [the identity release evidence](IDENTITY-RELEASE-2026-09-21.md); the discovery-only authorization statements below describe the earlier audit, not the active scope.
+
 - **Outcome and user-visible behavior:** `iyaayasfw.com` and `gear.iyaayasfw.com` keep their current application behavior. The obsolete `iyaayasfw` Pages project stops publishing repository files and branch previews. Its canonical, branch and retained deployment URLs no longer expose the old content.
 - **Scope and explicit exclusions:** Inventory and retire only that Pages project and its automatic Git publishing connection after confirming no intended dependency. Preserve the GitHub repository, both Workers, custom domains, D1, R2, mail DNS, external `pay` host, Access policy, credentials, money and stock. No identity redesign or processor work.
 - **Owner authorization statement/date:** The September 20–21 request authorizes FIRST-TASK discovery and local documentation only. **This configuration/deletion work is proposed, not authorized or started.** The baseline itself is complete.

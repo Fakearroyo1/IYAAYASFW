@@ -2,6 +2,8 @@ import { env } from "cloudflare:workers";
 import { getUser } from "@/app/auth";
 import { requireAdminAccess } from "@/lib/security/admin-access";
 import { rateLimit, sessionUser } from "@/lib/auth/session";
+import {applicationSession} from '@/lib/identity/sessions';
+import {identityHost} from '@/lib/identity/router';
 import { RequestError } from "@/lib/security/http";
 import { PilotError, identity } from "@/lib/pilot/service";
 import { dateRange, historyPage } from "@/lib/pilot/history";
@@ -56,7 +58,7 @@ export async function GET(request: Request) {
     const stream = new ReadableStream<Uint8Array>({
       async pull(controller) {
         try {
-          const current = await sessionUser(db, request.headers.get("cookie"));
+          const current = env.IDENTITY_ENABLED==='true'?await applicationSession(db,env,request,identityHost(env,new URL(request.url))==='admin'?'admin':'member'):await sessionUser(db, request.headers.get("cookie"));
           if (!current) throw Error("Session expired");
           await requireAdminAccess(db, current);
           const data: any = {

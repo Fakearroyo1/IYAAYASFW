@@ -7,6 +7,9 @@ import {env} from 'cloudflare:workers';
 import {OWNER_EMAIL} from '@/lib/pilot/owner';
 import {digest,dummyHash,passwordHash,passwordMatches,same,validPassword} from '@/lib/auth/password';
 import {issueSession,rateLimit,revokeSession,sessionCookie,sessionUser} from '@/lib/auth/session';
+import {readSession,applicationSession} from '@/lib/identity/sessions';
+import {identityHost} from '@/lib/identity/router';
+import {ADMIN_COOKIE,cookie as identityCookie} from '@/lib/identity/common';
 export const dynamic='force-dynamic';
 const json=(value:unknown,status=200,cookie?:string)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...(cookie?{'Set-Cookie':cookie}:{})}});
 export async function GET(){return json({siteKey:(env as any).TURNSTILE_SITE_KEY||null})}
@@ -17,12 +20,19 @@ export async function POST(request:Request){
   if(!env.DB)return json({error:'Sign-in is temporarily unavailable.'},503);
   const b=await readJson(request,4096);
   const db=env.DB;
-  if(b.action==='logout'){await revokeSession(db,request.headers.get('cookie'));return json({ok:true},200,sessionCookie('',0))}
+  const identityAudience=identityHost(env,new URL(request.url))==='admin'?'admin':'member';
+  if(env.IDENTITY_ENABLED==='true'&&identityAudience==='admin'&&['login','firstTime','completeSetup','requestReset','completeRecovery'].includes(b.action))return json({error:'Use member password access on the main store. Administrator sign-in uses Access.'},403);
+  if(b.action==='logout'){
+   if(env.IDENTITY_ENABLED==='true'){const current=await readSession(db,request,identityAudience);if(current)await db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').bind(current.tokenHash).run();return json({ok:true},200,identityAudience==='admin'?identityCookie(ADMIN_COOKIE,'',0):sessionCookie('',0))}
+   await revokeSession(db,request.headers.get('cookie'));return json({ok:true},200,sessionCookie('',0));
+  }
   if(b.action==='login'){
    const email=typeof b.email==='string'?b.email.trim().toLowerCase():'';const password=typeof b.password==='string'?b.password:'';
    if(email.length>254||password.length>128||!email.includes('@'))return json({error:'Email or password was not recognized.'},401);
    const ip=request.headers.get('cf-connecting-ip')||'unknown';
-   const allowed=await rateLimit(db,'ip:'+ip,40,900000)&&await rateLimit(db,'email:'+email,10,900000);
+   // A 60-member shared-NAT rehearsal exhausted the former 40/IP allowance.
+   // Allow three starts per member in that burst; account and challenge gates stay.
+   const allowed=await rateLimit(db,'ip:'+ip,180,900000)&&await rateLimit(db,'email:'+email,10,900000);
    if(!allowed)return json({error:'Too many attempts. Try again in 15 minutes.'},429);
    await verifyChallenge(request,b,env as any);
    await db.batch([db.prepare('DELETE FROM auth_limits WHERE expires_at<?').bind(Date.now()),db.prepare('DELETE FROM auth_sessions WHERE expires_at<?').bind(Date.now())]);
@@ -66,10 +76,14 @@ export async function POST(request:Request){
    const token=await issueSession(db,m.id,hash);if(!token)return json({error:'Account changed. Please sign in again.'},401);
    return json({ok:true},200,sessionCookie(token));
   }
-  const current=await sessionUser(db,request.headers.get('cookie'));
+  const current=env.IDENTITY_ENABLED==='true'?await applicationSession(db,env,request,identityHost(env,new URL(request.url))==='admin'?'admin':'member'):await sessionUser(db,request.headers.get('cookie'));
   if(b.action==='changePassword'){
    if(!current)return json({error:'Sign in to change your password.'},401);
-   if(current.role==='admin')await requireAdminAccess(db,current);
+   const actualRole=await db.prepare('SELECT role FROM members WHERE id=?').bind(current.memberId).first<{role:string}>();
+   if(actualRole?.role==='admin'){
+    if(env.IDENTITY_ENABLED==='true'&&env.IDENTITY_ROLLOUT==='all-approved'&&identityHost(env,new URL(request.url))!=='admin')return json({error:'Use the administrator site to change an administrator password.'},403);
+    await requireAdminAccess(db,current);
+   }
    if(!await rateLimit(db,'password-change:'+current.memberId,8,900000))return json({error:'Too many attempts. Try again in 15 minutes.'},429);
    if(typeof b.currentPassword!=='string'||b.currentPassword.length>128||!validPassword(b.password))return json({error:'Enter your current password and a new password between 15 and 128 characters.'},400);
    const credential=await db.prepare('SELECT password_hash FROM auth_credentials WHERE member_id=?').bind(current.memberId).first<{password_hash:string}>();
@@ -112,7 +126,7 @@ export async function POST(request:Request){
   }
   if(b.action==='password')return json({error:'Use a private setup or recovery code. Members choose their own passwords.'},400);
   if(b.action==='revoke'){
-   await db.batch([accessGuard(),db.prepare('DELETE FROM auth_sessions WHERE member_id=?').bind(b.memberId),db.prepare('INSERT INTO audit(id,actor,kind,target,detail,created_at) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),admin.memberId,'sessions_revoked',b.memberId,'{}',Date.now()),db.prepare('DELETE FROM guards')]);return json({ok:true,signedOut:b.memberId===admin.memberId});
+   await db.batch([accessGuard(),...(env.IDENTITY_ENABLED==='true'?[db.prepare('UPDATE identity_state SET epoch=epoch+1,version=version+1 WHERE member_id=?').bind(b.memberId)]:[]),db.prepare('DELETE FROM auth_sessions WHERE member_id=?').bind(b.memberId),db.prepare('INSERT INTO audit(id,actor,kind,target,detail,created_at) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),admin.memberId,'sessions_revoked',b.memberId,'{}',Date.now()),db.prepare('DELETE FROM guards')]);return json({ok:true,signedOut:b.memberId===admin.memberId});
   }
   return json({error:'Unknown action.'},400);
  }catch(e){if(e instanceof RequestError)return json({error:e.message},e.status);if(/constraint|unique/i.test(String(e)))return json({error:'Account access changed. Refresh and try again.'},409);return json({error:'Sign-in service is temporarily unavailable. No access was granted.'},503)}

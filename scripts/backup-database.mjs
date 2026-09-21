@@ -1,20 +1,26 @@
 // On-demand encrypted D1 export. Never modifies the remote database.
-import {spawnSync} from 'node:child_process';
-import {mkdtempSync,readFileSync,writeFileSync,rmSync,chmodSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {encryptBackup} from './backup-crypto.mjs';
+import {privateTemporaryDirectory,cloudflareRead} from './backup-private.mjs';
+import {restoreMemory,databaseManifest,compareManifests} from './backup-manifest.mjs';
 const output=process.argv[2];if(!output||!output.endsWith('.encrypted'))throw Error('Provide a private output path ending in .encrypted.');
 // Validate key before making an API request.
 encryptBackup(Buffer.alloc(0),process.env.BACKUP_ENCRYPTION_KEY);
-const directory=mkdtempSync(join(tmpdir(),'iyaayasfw-backup-'));chmodSync(directory,0o700);
+const temp=privateTemporaryDirectory(),directory=temp.directory,startedAt=new Date().toISOString();
 try{
  const config={name:'iyaayasfw-backup',account_id:'60bbba10092a452ee58b3bff5c92a894',d1_databases:[{binding:'DB',database_name:'iyaayasfw-supply-db',database_id:'ed7e63c8-77fd-4314-ab35-131c061e016a'}]};
- const configPath=join(directory,'wrangler.json'),sql=join(directory,'database.sql');writeFileSync(configPath,JSON.stringify(config),{mode:0o600});
- const wrangler=fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js',import.meta.url));
- const result=spawnSync(process.execPath,[wrangler,'d1','export','iyaayasfw-supply-db','--remote','--config',configPath,'--output',sql],{stdio:'pipe',env:process.env});
- if(result.error||result.status!==0)throw Error('Database export failed. Verify the scoped read token and account access.');
- writeFileSync(resolve(output),encryptBackup(readFileSync(sql),process.env.BACKUP_ENCRYPTION_KEY),{mode:0o600,flag:'wx'});
- console.log('Encrypted database backup created. Keep its key separately and run the isolated verification.');
-}finally{rmSync(directory,{recursive:true,force:true})}
+ const configPath=join(directory,'wrangler.json');writeFileSync(configPath,JSON.stringify(config),{mode:0o600});
+ const exports=[];
+ for(let pass=0;pass<2;pass++){
+  const sqlPath=join(directory,'database-'+pass+'.sql');
+  cloudflareRead(['d1','export','iyaayasfw-supply-db','--remote','--config',configPath,'--output',sqlPath]);
+  const sql=readFileSync(sqlPath,'utf8'),db=restoreMemory(sql);
+  try{exports.push({sql,manifest:databaseManifest(db)});}finally{db.close();}
+ }
+ const changed=compareManifests(exports[0].manifest,exports[1].manifest);
+ if(changed.length)throw Error('The database changed between snapshots. Retry during a quiet interval; no reconciled backup was accepted.');
+ const bundle={format:'iyaayasfw-d1-v2',startedAt,finishedAt:new Date().toISOString(),source:'iyaayasfw-supply-db',consistency:'Two consecutive full exports have identical application schema and every table/view digest.',sql:exports[0].sql,manifest:exports[0].manifest};
+ writeFileSync(resolve(output),encryptBackup(Buffer.from(JSON.stringify(bundle)),process.env.BACKUP_ENCRYPTION_KEY),{mode:0o600,flag:'wx'});
+ console.log(JSON.stringify({encryptedDatabaseBackup:'created',tables:Object.values(bundle.manifest.objects).filter(x=>x.type==='table').length,views:Object.values(bundle.manifest.objects).filter(x=>x.type==='view').length,consecutiveSnapshots:'identical',startedAt,finishedAt:bundle.finishedAt}));
+}finally{temp.remove();}

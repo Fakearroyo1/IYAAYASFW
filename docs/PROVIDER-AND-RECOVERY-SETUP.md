@@ -1,0 +1,37 @@
+# Owner setup for the identity test release
+
+Target: September 21, 2026, 08:00 America/New_York. These steps prepare access; they do not enable a new login method or authorize messages to members. Jake is the sole custodian. Never paste secrets or recovery codes into chat, an issue, or Git.
+
+## Google member login
+
+In [Google Cloud Console](https://console.cloud.google.com/), create/select a project named **IYAAYASFW member login**. Configure Google Auth Platform branding and an External audience for personal accounts. Use your existing controlled support contact; do not invent a recovery address. Request only `openid`, `email`, and `profile`. Basic sign-in does not require Gmail, Drive, or Calendar permissions.
+
+Create an OAuth client of type **Web application**, with exactly this authorized redirect URI:
+
+`https://auth.iyaayasfw.com/oidc/google/callback`
+
+For initial owner testing, use Testing audience and explicitly add your own Google account as a test user. All approved members require the provider audience to permit their accounts before rollout; application membership still controls access. Configure a separate client for any isolated test environment; do not add wildcard callbacks.
+
+In Cloudflare → Workers & Pages → **iyaayasfw-supply** → Settings → Variables and Secrets, enter the client ID as `GOOGLE_CLIENT_ID` and the client secret as an encrypted secret named `GOOGLE_CLIENT_SECRET`. Keep new method flags off. Save a recoverable copy of the client registration details in your own secure vault.
+
+## Personal Microsoft member login
+
+In [Microsoft Entra admin center](https://entra.microsoft.com/), open App registrations → New registration. Name it **IYAAYASFW member login** and choose **Personal Microsoft accounts only**. This does not require members to have organizational, military, or government accounts. If your owner account cannot create a registration, report that console limitation; do not select a broader audience as a workaround.
+
+Add a **Web** redirect URI exactly:
+
+`https://auth.iyaayasfw.com/oidc/microsoft/callback`
+
+Create a client secret with an expiration you can track securely. Put the Application (client) ID in Cloudflare as `MICROSOFT_CLIENT_ID` and the secret **value** as encrypted `MICROSOFT_CLIENT_SECRET`. The runtime will use the consumer authority and only `openid email profile`; no Graph/mail access or refresh-token permission is needed. Email-based automatic association remains disabled. Invites and freshly authenticated linking can associate a personal Microsoft account without assuming that its email matches the roster.
+
+## Solo recovery custody
+
+Use your existing secured recovery methods for Cloudflare, GitHub, Google, and Microsoft. Verify that you can recover those accounts independently of the snackbar app. Keep account recovery codes, backup encryption material, and the location of encrypted backup copies under your control in a secure vault plus an offline/recoverable copy. Do not store the only key beside its encrypted backup, in app storage, or in this repository.
+
+Before exporting real records, identify an owner-controlled **encrypted backup destination** and a separate **key custody location**. Only describe categories/paths, never the key itself. A protected backup and restricted restore rehearsal are release gates. No production restore is authorized by these instructions.
+
+## Tell Codex when ready
+
+Report only: project/application names, whether each registration exists, whether the four Cloudflare settings above are saved, and any console error. Also report which recovery methods are available and the approved backup/key locations by category. Do not report secret values. Real provider sign-in, phone passkey tests, MFA denial, and recovery still need evidence before rollout.
+
+References: [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server), [Microsoft registration](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).

@@ -1,5 +1,7 @@
 # IYAAYASFW Supply
 
+Identity rollout candidate: see [current release evidence](docs/IDENTITY-RELEASE-2026-09-21.md), [team test instructions](TEAM-TEST-CHECKLIST.md), and [owner recovery](OWNER-RECOVERY-RUNBOOK.md). New methods default off. The September 21 work order supersedes the historical discovery-only work order; real account/device gates remain explicit in the release evidence.
+
 A member store for snack bar purchases and unit gear, with durable orders, stock and price management, pickup tracking, and CSV exports. Production is hosted on the existing Cloudflare Worker at iyaayasfw.com; `main` triggers Workers Builds.
 
 ## Member access and passwords

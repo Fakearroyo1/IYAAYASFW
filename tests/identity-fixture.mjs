@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
 export async function fixture() {
-  const out = resolve('.sites-runtime/identity-tests');
+  const out = resolve('.sites-runtime/identity-tests-'+process.pid);
   mkdirSync(out, {recursive:true});
   globalThis.__identityTestEnv = {OWNER_EMAIL:'owner@example.test'};
   writeFileSync(resolve(out,'env.mjs'), 'export const env=globalThis.__identityTestEnv;');
@@ -44,7 +44,7 @@ export async function fixture() {
   }
   const db={prepare:sql=>new Statement(sql),exec:async sql=>sqlite.exec(sql),batch:async statements=>{
     if(hooks.beforeBatch){const hook=hooks.beforeBatch;hooks.beforeBatch=null;await hook(statements);}
-    sqlite.exec('BEGIN');try{const results=[];for(const stmt of statements)results.push(await stmt.run());sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}
+    sqlite.exec('BEGIN');try{const results=[];for(const stmt of statements){const r=sqlite.prepare(stmt.sql).run(...stmt.values);results.push({success:true,meta:{changes:Number(r.changes)}});}sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}
   }};
   globalThis.__identityTestEnv.DB=db;
   const module=path=>import(pathToFileURL(resolve(out,path+'.mjs')).href);

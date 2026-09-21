@@ -1,4 +1,5 @@
 "use client";
+import {secureFetch} from "@/lib/identity/client";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -113,7 +114,7 @@ export default function GearManager({
           throw Error("Each image must be under 5 MB.");
         const f = new FormData();
         f.set("image", file);
-        const r = await fetch("/api/product-images", {
+        const r = await secureFetch("/api/product-images", {
             method: "POST",
             body: f,
           }),
