@@ -26,7 +26,7 @@ async function context(b){const r=await request(b.host,'/identity/api',undefined
 async function post(b,body,extra={}){const r=await request(b.host,'/identity/api',body,{...headers(b),'x-identity-csrf':b.csrf,...extra});saveCookies(b,r);return r;}
 const digest=v=>createHash('sha256').update(v).digest('hex');
 try{
- const db=await mf.getD1Database('DB');
+ let db=await mf.getD1Database('DB');
  for(const file of [...readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort().map(x=>'drizzle/'+x),...['AUTH','PRODUCT','SECURITY','BETA','ROUNDS','GUEST','AUTOPILOT','REWARDS','EARNING','REDEMPTION','PROFILE-EXPERIENCE','ADMIN-EXPERIENCE','IDENTITY'].map(x=>x+'-SCHEMA.sql')])await db.exec(readFileSync(file,'utf8').replace(/--> statement-breakpoint/g,'').replace(/^--.*$/gm,'').replace(/\n/g,' '));
  const password='Synthetic worker password 13579',salt='12345678901234567890123456789012',hash='scrypt$16384$8$5$'+salt+'$'+scryptSync(password,salt,32,{N:16384,r:8,p:5,maxmem:32*1024*1024}).toString('hex');
  await db.prepare("INSERT INTO members(id,email,name,role,debt,credit) VALUES('owner','owner@example.test','Owner','admin',0,0),('second-admin','second@example.test','Second admin','admin',0,0),('member','member@example.test','Member','member',725,250)").run();
@@ -114,8 +114,22 @@ try{
  admin.access=await token('owner-subject',undefined,'wrong-audience');check((await context(admin)).r.status===403,'wrong Access audience denied');
  admin.access=await token();check((await context(admin)).r.status===200,'mapped current Access subject accepted');
  const enterAdmin=await post(admin,{action:'adminLogin',section:'identity'});
- check(enterAdmin.status===200&&(await enterAdmin.json()).next==='/?view=admin&section=identity','admin app session preserves account-management destination');await context(admin);
+ check(enterAdmin.status===200&&(await enterAdmin.json()).next==='/?view=admin&section=members&workspace=identity','admin app session preserves account-management destination');await context(admin);
  check((await post(admin,{action:'adminRead',query:''})).status===200,'owner identity workspace available');
+ check((await context(admin)).c.management.identityHref==='https://admin.test.local/?view=admin&section=members&workspace=identity','owner tools share Members and access destination');
+ await db.prepare("INSERT INTO members(id,email,name,role) VALUES('new-member','new@example.test','New Member','member')").run();
+ await db.prepare('INSERT INTO auth_setup(member_id,code_hash,expires_at,created_by,created_at) VALUES(?,?,?,?,?)').bind('new-member',digest('previous-code'),Date.now()+600000,'owner',Date.now()).run();
+ const oldSetup=await db.prepare("SELECT * FROM auth_setup WHERE member_id='new-member'").first();
+ const retiredSetup=await request(admin.host,'/api/auth',{action:'issueSetup',memberId:'new-member'},{...headers(admin),'x-identity-csrf':admin.csrf});
+ check(retiredSetup.status===409&&(await retiredSetup.json()).error.includes('private invitation'),'identity rollout rejects legacy setup-code issuance');
+ check(JSON.stringify(await db.prepare("SELECT * FROM auth_setup WHERE member_id='new-member'").first())===JSON.stringify(oldSetup),'existing setup record survives rejected issuance');
+ const ownerAction={operation:'invite',target:'member',identityVerified:true,seconds:900};
+ const ownerStart=await (await post(admin,{action:'start',purpose:'owner',payload:ownerAction})).json(),ownerFlow=new URL(ownerStart.next).searchParams.get('flow');
+ const ownerAuth=browser('auth.test.local');await context(ownerAuth);await post(ownerAuth,{action:'adopt',flow:ownerFlow});
+ const ownerProof=await (await post(ownerAuth,{action:'passwordProof',flow:ownerFlow,password})).json(),ownerCode=new URLSearchParams(new URL(ownerProof.next).hash.slice(1)).get('code');
+ const ownerComplete=await post(admin,{action:'complete',flow:ownerFlow,code:ownerCode}),ownerCompleteBody=await ownerComplete.json();
+ check(ownerComplete.status===200&&ownerCompleteBody.next.startsWith('/?view=admin&section=members&workspace=identity&approval='),'fresh owner verification returns directly to unified management confirmation');
+ await context(admin);
  const template=await post(admin,{action:'importTemplate'}),templateBody=await template.json();
  check(template.status===200&&templateBody.csv.includes('"member",,,,,')&&!templateBody.csv.includes('member@example.test'),'owner roster template uses explicit IDs without inferred email authority');
  const blankPreview=await post(admin,{action:'importPreview',csv:templateBody.csv});
@@ -146,8 +160,21 @@ try{
  const ownerStageContext=await context(ownerMember);
  check(ownerStageContext.c.management.href==='https://admin.test.local/?view=admin','owner-stage navigation also uses administrator host');
  const ownerStageRoute=await request(domain,'/?view=admin&section=identity',undefined,headers(ownerMember));
- check(ownerStageRoute.status===303&&ownerStageRoute.headers.get('location')==='https://admin.test.local/?view=admin&section=identity','owner-stage server redirect preserves account suite');
+ check(ownerStageRoute.status===303&&ownerStageRoute.headers.get('location')==='https://admin.test.local/?view=admin&section=members&workspace=identity','owner-stage server redirect preserves account suite');
  check(!(await (await request(domain,'/api/pilot',undefined,headers(ownerMember))).json()).admin,'owner-stage member session has no administrator dashboard authority');
+ await mf.setOptions({...mfOptions,bindings:{...settings,IDENTITY_ROLLOUT:'member-beta',IDENTITY_BETA_MEMBER_IDS:'["owner","member"]'}});db=await mf.getD1Database('DB');
+ const betaContext=await context(member);check(betaContext.c.rollout.eligible===true&&!JSON.stringify(betaContext.c).includes('IDENTITY_BETA_MEMBER_IDS'),'member sees their own beta eligibility without roster disclosure');
+ check((await post(member,{action:'start',purpose:'add:passkey'})).status===200,'listed member can begin beta fresh verification');
+ const outsideDetail=await (await post(admin,{action:'adminRead',target:'new-member'})).json();check(outsideDetail.member.rolloutEligible===false,'future member cannot enroll through beta invitation');
+ const beforeRollbackSessions=(await db.prepare("SELECT count(*) n FROM auth_sessions WHERE member_id='member'").first()).n;
+ await mf.setOptions({...mfOptions,bindings:{...settings,IDENTITY_ROLLOUT:'member-beta',IDENTITY_BETA_MEMBER_IDS:'["owner"]'}});db=await mf.getD1Database('DB');
+ check((await context(member)).c.rollout.eligible===false,'beta removal is visible immediately');
+ check((await post(member,{action:'start',purpose:'add:passkey'})).status===403,'unlisted member cannot begin new enrollment');
+ const ownerApproval=new URL(ownerCompleteBody.next,'https://admin.test.local').searchParams.get('approval');await context(admin);
+ check((await post(admin,{action:'admin',payload:ownerAction,approval:ownerApproval})).status===403,'owner cannot issue an unusable invitation outside current beta');
+ check((await db.prepare('SELECT status FROM identity_grants WHERE id=?').bind(ownerApproval).first()).status==='pending','denied invitation does not consume fresh proof or change grants');
+ check((await request(domain,'/api/pilot',undefined,headers(member))).status===200,'beta change preserves existing member session and store access');
+ check((await db.prepare("SELECT count(*) n FROM auth_sessions WHERE member_id='member'").first()).n===beforeRollbackSessions,'beta checks do not revoke existing sessions');
  check(unexpectedOutbound===0,'no production/provider traffic sent');
  const result={suite:'identity-http',checks,providers:'synthetic',mfa:'signed fixture only',runtime:'compiled Worker and isolated D1',passedAt:new Date().toISOString()};writeFileSync('.sites-runtime/identity-http-results.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await mf.dispose();}

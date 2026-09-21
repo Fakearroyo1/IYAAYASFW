@@ -2,10 +2,12 @@ import {randomBytes} from 'node:crypto';
 import {domainToASCII} from 'node:url';
 import {digest,same} from '../auth/password';
 import {RequestError} from '../security/http';
+import {rolloutAllowsMember} from './rollout';
+export {rolloutAllowsMember};
 export {digest,same};
 export type Method='google'|'microsoft'|'passkey';
 export type Audience='member'|'admin';
-export type IdentitySettings = Partial<Record<'IDENTITY_ENABLED'|'IDENTITY_ROLLOUT'|'IDENTITY_GOOGLE_ENABLED'|'IDENTITY_GOOGLE_FRESH_ENABLED'|'IDENTITY_MICROSOFT_ENABLED'|'IDENTITY_PASSKEY_ENABLED'|'IDENTITY_GOOGLE_BOOTSTRAP_ENABLED'|'IDENTITY_BASE_DOMAIN'|'IDENTITY_OWNER_MEMBER_ID'|'GOOGLE_CLIENT_ID'|'GOOGLE_CLIENT_SECRET'|'MICROSOFT_CLIENT_ID'|'MICROSOFT_CLIENT_SECRET'|'ADMIN_ACCESS_TEAM_DOMAIN'|'ADMIN_ACCESS_AUD'|'IDENTITY_ADMIN_ACCESS_AUD'|'IDENTITY_REQUEST_RETENTION_DAYS'|'IDENTITY_SESSION_RETENTION_DAYS'|'IDENTITY_AUDIT_RETENTION_DAYS',string>>;
+export type IdentitySettings = Partial<Record<'IDENTITY_ENABLED'|'IDENTITY_ROLLOUT'|'IDENTITY_BETA_MEMBER_IDS'|'IDENTITY_GOOGLE_ENABLED'|'IDENTITY_GOOGLE_FRESH_ENABLED'|'IDENTITY_MICROSOFT_ENABLED'|'IDENTITY_PASSKEY_ENABLED'|'IDENTITY_GOOGLE_BOOTSTRAP_ENABLED'|'IDENTITY_BASE_DOMAIN'|'IDENTITY_OWNER_MEMBER_ID'|'GOOGLE_CLIENT_ID'|'GOOGLE_CLIENT_SECRET'|'MICROSOFT_CLIENT_ID'|'MICROSOFT_CLIENT_SECRET'|'ADMIN_ACCESS_TEAM_DOMAIN'|'ADMIN_ACCESS_AUD'|'IDENTITY_ADMIN_ACCESS_AUD'|'IDENTITY_REQUEST_RETENTION_DAYS'|'IDENTITY_SESSION_RETENTION_DAYS'|'IDENTITY_AUDIT_RETENTION_DAYS',string>>;
 export function fail(message='This sign-in method is not linked to enabled access. Contact a snack bar admin.',status=403):never{throw new RequestError(message,status)}
 export const random=()=>randomBytes(32).toString('base64url');
 export const sessionToken=()=>randomBytes(32).toString('hex');
@@ -46,7 +48,7 @@ export async function member(db:D1Database,memberId:string){const row=await one<
 export const memberGuard=(db:D1Database,memberId:string,epoch:number)=>guard(db,'EXISTS(SELECT 1 FROM members m JOIN identity_state s ON s.member_id=m.id WHERE m.id=? AND m.active=1 AND s.epoch=?)',memberId,epoch);
 export const liveSessionGuard=(db:D1Database,hash:string,memberId:string)=>guard(db,"EXISTS(SELECT 1 FROM auth_sessions s JOIN members m ON m.id=s.member_id WHERE s.token_hash=? AND m.id=? AND m.active=1 AND s.expires_at>? AND s.created_at>?-CASE WHEN m.role='admin' THEN 43200000 ELSE 2592000000 END)",hash,memberId,Date.now(),Date.now());
 export type Credential={id:string;member_id:string;kind:Method;status:string;issuer:string|null;subject:string|null;client_id:string|null;observed_email:string|null;credential_id:string|null;public_key:string|null;counter:number;user_handle:string|null;rp_id:string|null;transports:string|null;label:string;created_at:number;last_used_at:number|null};
-export function requireRolloutMember(env:IdentitySettings,memberId:string){if(env.IDENTITY_ROLLOUT!=='all-approved'&&memberId!==env.IDENTITY_OWNER_MEMBER_ID)fail('New sign-in methods are undergoing owner verification. Use your existing password.',403);}
+export function requireRolloutMember(env:IdentitySettings,memberId:string){if(!rolloutAllowsMember(env,memberId))fail('New sign-in methods are limited to the current test group. Use your existing password or contact the owner.',403);}
 export function requireUsableMethod(env:IdentitySettings,credential:Credential){const c=config(env);if(credential.status!=='active'||!c.methods[credential.kind]||(credential.kind==='passkey'?credential.rp_id!==c.domain:credential.client_id!==(credential.kind==='google'?env.GOOGLE_CLIENT_ID:env.MICROSOFT_CLIENT_ID)))fail('This method is temporarily unavailable. Use another existing method.',503);}
 export type Flow={id:string;purpose:'login'|'fresh'|'enroll';audience:Audience;destination_browser:string|null;verifier:string|null;verifier_hash:string|null;return_path:string;auth_browser:string|null;register_browser:string|null;member_id:string|null;epoch:number|null;source_session:string|null;action:string|null;grant_id:string|null;credential_id:string|null;proof:string|null;proof_at:number|null;status:string;created_at:number;expires_at:number;created_generation:number};
 // Only pre-existing, currently usable credentials can prove a sensitive change.

@@ -1,6 +1,6 @@
 import {readJson,RequestError} from '../security/http';
 import {rateLimit,sessionCookie} from '../auth/session';
-import {BROWSER,DESTINATION,ADMIN_COOKIE,config,cookie,cookieValue,csrfToken,verifyCsrf,browserHash,digest,random,same,text,method,fail,flow,sql,one,all,requireRolloutMember,freshMethods,safeReturn,type IdentitySettings,type Flow,type Credential} from './common';
+import {rolloutAllowsMember,BROWSER,DESTINATION,ADMIN_COOKIE,config,cookie,cookieValue,csrfToken,verifyCsrf,browserHash,digest,random,same,text,method,fail,flow,sql,one,all,requireRolloutMember,freshMethods,safeReturn,type IdentitySettings,type Flow,type Credential} from './common';
 import {readSession,accessPrincipal,adminSession,requireOwner,usesAdminHost,type IdentityUser,type AccessPrincipal} from './sessions';
 import {newFlow,adoptFlow,boundFlow,grantFor,claimInvite,bridgeInvite,associateProvider,storeEnrollmentProof,finishEnrollment,freshPassword,authenticated,issueHandoff,redeem} from './flows';
 import {startProvider,finishProvider,startPasskey,finishPasskey} from './providers';
@@ -52,8 +52,8 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
    let browser=cookieValue(request,BROWSER);const cookies:string[]=[];
    if(!/^[A-Za-z0-9_-]{43}$/.test(browser)){browser=random();cookies.push(cookie(BROWSER,browser,1800));}
    const administrator=user&&!!await one(db,"SELECT 1 FROM members WHERE id=? AND role='admin' AND active=1",user.memberId);
-   const management=administrator?{href:(await usesAdminHost(db,env,user!.memberId)?c.admin:c.member)+'/?view=admin',identityHref:user!.memberId===env.IDENTITY_OWNER_MEMBER_ID?c.admin+'/?view=admin&section=identity':null}:null;
-   return json({enabled:true,host,origins:{member:c.member,auth:c.auth,register:c.register,admin:c.admin},methods:c.methods,management,csrf:csrfToken(request,browser),user:user?{name:user.displayName,id:user.memberId,audience:user.audience}:null,owner:!!user&&user.memberId===env.IDENTITY_OWNER_MEMBER_ID&&host==='admin'},200,cookies);
+   const management=administrator?{href:(await usesAdminHost(db,env,user!.memberId)?c.admin:c.member)+'/?view=admin',identityHref:user!.memberId===env.IDENTITY_OWNER_MEMBER_ID?c.admin+'/?view=admin&section=members&workspace=identity':null}:null;
+   return json({enabled:true,host,origins:{member:c.member,auth:c.auth,register:c.register,admin:c.admin},methods:c.methods,management,rollout:{stage:env.IDENTITY_ROLLOUT,eligible:!!user&&rolloutAllowsMember(env,user.memberId)},csrf:csrfToken(request,browser),user:user?{name:user.displayName,id:user.memberId,audience:user.audience}:null,owner:!!user&&user.memberId===env.IDENTITY_OWNER_MEMBER_ID&&host==='admin'},200,cookies);
   }
   if(request.method!=='POST')return json({error:'Method not allowed.'},405);
   // JSON doubles quotes/backslashes in a CSV upload. The decoded CSV retains its 64 KB limit.
@@ -61,7 +61,7 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(!await rateLimit(db,'identity-api:'+ip,1200,900000))fail('Too many attempts. Try again later.',429);
   if(action==='adminLogin'){
-   if(host!=='admin'||!principal)fail();const token=await adminSession(db,principal!);return json({next:'/?view=admin'+(b.section==='identity'?'&section=identity':'')},200,[cookie(ADMIN_COOKIE,token,43200)]);
+   if(host!=='admin'||!principal)fail();const token=await adminSession(db,principal!);return json({next:'/?view=admin'+(['identity','members'].includes(b.section as string)?'&section=members'+(b.section==='identity'||b.workspace==='identity'?'&workspace=identity':''):'')},200,[cookie(ADMIN_COOKIE,token,43200)]);
   }
   if(action==='start'){
    if(host!=='member'&&host!=='admin')fail();

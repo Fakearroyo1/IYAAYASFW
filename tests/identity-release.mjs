@@ -32,4 +32,14 @@ for(const mutate of [s=>s.observedAt='2020-01-01',s=>s.commit='b'.repeat(40),s=>
 const full=structuredClone(snapshot);full.realTests=Object.fromEntries(['google','microsoft','iphoneSafari','androidChrome','desktop','adminMfaDenial','ownerRecovery','legacyCommerceSmoke'].map(k=>[k,'passed']));full.mappedAdminMembers=['owner','659acffe-8042-49de-a2cf-9db261aef0e5'];
 assert.equal(validateIdentityRelease(config,full,'all-approved',commit).vars.IDENTITY_ROLLOUT,'all-approved');checks++;
 full.mappedAdminMembers=['owner'];assert.throws(()=>validateIdentityRelease(config,full,'all-approved',commit));checks++;
+const beta=structuredClone(snapshot),rosterPath='/d1/database/ed7e63c8-77fd-4314-ab35-131c061e016a/query';
+beta.beta={authorization:'owner-request-current-member-beta',memberIds:['owner','member'],sql:'SELECT id,role FROM members WHERE active=1 ORDER BY id',fullReleaseReady:false};
+beta.responses[rosterPath]={success:true,result:[{success:true,results:[{id:'owner',role:'admin'},{id:'member',role:'member'}]}]};
+beta.realTests=Object.fromEntries(['google','microsoft','iphoneSafari','adminMfaDenial','ownerRecovery'].map(k=>[k,'passed']));beta.mappedAdminMembers=['owner'];
+const preparedBeta=validateIdentityRelease(config,beta,'member-beta',commit);
+assert.equal(preparedBeta.vars.IDENTITY_ROLLOUT,'member-beta');assert.deepEqual(JSON.parse(preparedBeta.vars.IDENTITY_BETA_MEMBER_IDS),['member','owner']);checks++;
+assert.throws(()=>validateIdentityRelease(config,beta,'all-approved',commit),'Beta evidence cannot satisfy full-release gates');checks++;
+for(const mutate of [s=>delete s.beta.authorization,s=>s.beta.memberIds=[],s=>s.beta.memberIds=['owner','unknown'],s=>s.beta.memberIds=['owner','owner'],s=>s.beta.memberIds=['member'],s=>s.beta.memberIds=['owner','bad id'],s=>s.beta.fullReleaseReady=true,s=>s.beta.sql='SELECT id FROM members',s=>delete s.responses[rosterPath],s=>s.responses[rosterPath].result[0].success=false,s=>s.responses[rosterPath].result[0].results=[],s=>s.mappedAdminMembers=[],s=>s.realTests.adminMfaDenial='pending']){
+ const broken=structuredClone(beta);mutate(broken);assert.throws(()=>validateIdentityRelease(config,broken,'member-beta',commit));checks++;
+}
 console.log(`${checks} manual identity release gate checks passed; no remote operations.`);

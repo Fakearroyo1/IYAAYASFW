@@ -10,8 +10,8 @@ export const adminGroups = [
   { title: "Store operations", items: [["team", "Team board"], ["activity", "Activity history"], ["settings", "Store settings"]] },
 ] as const;
 
-export default function AdminNavigation({value,onChange,identityOwner=false}:{value:string;onChange:(value:string)=>void;identityOwner?:boolean}) {
-  const groups=adminGroups.map(group=>({title:group.title,items:[...group.items,...(identityOwner&&group.title==='Members & community'?[['identity','Accounts & sign-in'] as const]:[])]}));
+export default function AdminNavigation({value,onChange}:{value:string;onChange:(value:string)=>void}) {
+  const groups=adminGroups;
   return <>
     <label className="management-select field"><span>Management section</span><NativeSelect value={value} onChange={e=>onChange(e.target.value)}>
       {groups.map(group=><optgroup label={group.title} key={group.title}>{group.items.map(([id,label])=><option key={id} value={id}>{label}</option>)}</optgroup>)}

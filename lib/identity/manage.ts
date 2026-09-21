@@ -1,4 +1,4 @@
-import {fail,id,random,digest,config,sql,one,all,guard,atomic,audit,member,memberGuard,liveSessionGuard,matchEmail,text,type IdentitySettings,type Credential} from './common';
+import {requireRolloutMember,rolloutAllowsMember,fail,id,random,digest,config,sql,one,all,guard,atomic,audit,member,memberGuard,liveSessionGuard,matchEmail,text,type IdentitySettings,type Credential} from './common';
 import {ownerGuard,requireOwner,type IdentityUser} from './sessions';
 import {credentialInsert,grantGuard,type Grant} from './flows';
 import type {ProviderProof} from './providers';
@@ -38,7 +38,7 @@ export async function adminRead(db:D1Database,env:IdentitySettings,user:Identity
  const actor=await requireOwner(db,user,env);
  if(target){
   const m=await one(db,'SELECT m.id,m.name,m.email,m.active,m.role,s.epoch,s.version,c.email contact_email FROM members m JOIN identity_state s ON s.member_id=m.id LEFT JOIN identity_contacts c ON c.member_id=m.id WHERE m.id=?',target);if(!m)fail('Member not found.',404);
-  return{member:m,methods:await all(db,'SELECT id,kind,status,label,observed_email,created_at,last_used_at,provenance FROM identity_credentials WHERE member_id=? ORDER BY created_at DESC',target),grants:await all(db,'SELECT id,kind,purpose,provider,match_email,status,expires_at,created_at,result_credential FROM identity_grants WHERE member_id=? ORDER BY created_at DESC LIMIT 100',target),events:await all(db,'SELECT event,detail,created_at FROM identity_audit WHERE target=? ORDER BY created_at DESC LIMIT 50',target)};
+  return{member:{...m,rolloutEligible:rolloutAllowsMember(env,target)},methods:await all(db,'SELECT id,kind,status,label,observed_email,created_at,last_used_at,provenance FROM identity_credentials WHERE member_id=? ORDER BY created_at DESC',target),grants:await all(db,'SELECT id,kind,purpose,provider,match_email,status,expires_at,created_at,result_credential FROM identity_grants WHERE member_id=? ORDER BY created_at DESC LIMIT 100',target),events:await all(db,'SELECT event,detail,created_at FROM identity_audit WHERE target=? ORDER BY created_at DESC LIMIT 50',target)};
  }
  return{members:await all(db,"SELECT m.id,m.name,m.email,m.role,m.active,s.version FROM members m JOIN identity_state s ON s.member_id=m.id WHERE m.id=? OR instr(lower(m.name),lower(?))>0 OR instr(lower(m.email),lower(?))>0 ORDER BY m.name LIMIT 60",query,query,query),requests:await all(db,"SELECT id,provider,observed_email,created_at,attempts FROM identity_requests WHERE state='pending' ORDER BY created_at LIMIT 100"),owner:actor.memberId};
 }
@@ -54,6 +54,7 @@ export async function adminMutation(db:D1Database,env:IdentitySettings,user:Iden
  }
  const m=await member(db,target);base.push(memberGuard(db,m.id,m.epoch));
  if(op==='invite'){
+  requireRolloutMember(env,m.id);
   const purpose=payload.purpose==='recovery'?'recovery':'enroll';
   const seconds=payload.seconds===undefined?86400:Number(payload.seconds);if(!Number.isInteger(seconds)||seconds<900||seconds>604800)fail('Choose 15 minutes, one day, or up to seven days.',400);
   if(payload.identityVerified!==true)fail('Confirm the member through a known contact method first.',400);

@@ -11,7 +11,7 @@ const ADMIN_APP='49519f7c-2a3a-498c-b90e-87524632ec46';
 const DB='ed7e63c8-77fd-4314-ab35-131c061e016a';
 const methods=['GOOGLE','MICROSOFT','PASSKEY'];
 export function validateIdentityRelease(config,snapshot,stage,commit){
- assert.ok(['owner-smoke','all-approved'].includes(stage),'Choose an explicit release stage.');
+ assert.ok(['owner-smoke','member-beta','all-approved'].includes(stage),'Choose an explicit release stage.');
  assert.equal(snapshot.account,ACCOUNT);
  assert.match(commit,/^[a-f0-9]{40}$/);
  assert.equal(snapshot.commit,commit,'Snapshot must identify this candidate commit.');
@@ -54,6 +54,19 @@ export function validateIdentityRelease(config,snapshot,stage,commit){
  assert.equal(snapshot.ci?.commit,commit);assert.equal(snapshot.ci?.conclusion,'success','Candidate Linux checks must pass.');
  assert.equal(snapshot.recovery?.restore,'passed');assert.equal(snapshot.recovery?.keyRetrievedFromVault,true);
  assert.ok(Date.now()-Date.parse(snapshot.recovery?.verifiedAt)<86400000,'Refresh protected recovery evidence before release.');
+ if(stage==='member-beta'){
+  assert.equal(snapshot.beta?.authorization,'owner-request-current-member-beta','Record the explicit owner beta request.');
+  const ids=snapshot.beta?.memberIds;
+  assert.ok(Array.isArray(ids)&&ids.length>0&&ids.length<=100&&ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(id))&&new Set(ids).size===ids.length,'Beta must name 1–100 unique existing member IDs.');
+  assert.ok(ids.includes('owner'),'Keep the verified owner in the beta.');
+  assert.equal(snapshot.beta?.sql,'SELECT id,role FROM members WHERE active=1 ORDER BY id');
+  const roster=get('/d1/database/'+DB+'/query');
+  assert.equal(roster.length,1);assert.equal(roster[0].success,true);
+  assert.ok(ids.every(id=>roster[0].results.some(row=>row.id===id)),'Beta cannot include an unknown or inactive member.');
+  for(const gate of ['google','microsoft','iphoneSafari','adminMfaDenial','ownerRecovery'])assert.equal(snapshot.realTests?.[gate],'passed','Missing owner acceptance before beta: '+gate);
+  assert.ok(snapshot.mappedAdminMembers?.includes('owner'),'The owner needs a verified administrator mapping.');
+  assert.equal(snapshot.beta?.fullReleaseReady,false,'Beta is not a completed full-release acceptance.');
+ }
  if(stage==='all-approved'){
   for(const gate of ['google','microsoft','iphoneSafari','androidChrome','desktop','adminMfaDenial','ownerRecovery','legacyCommerceSmoke'])assert.equal(snapshot.realTests?.[gate],'passed','Missing real test: '+gate);
   assert.deepEqual(snapshot.mappedAdminMembers?.slice().sort(),['owner','659acffe-8042-49de-a2cf-9db261aef0e5'].sort(),'Both administrators require verified mappings before cutover.');
@@ -62,6 +75,7 @@ export function validateIdentityRelease(config,snapshot,stage,commit){
  prepared.d1_databases[0].database_id=DB;
  prepared.routes=[HOST,'auth.'+HOST,'register.'+HOST,'admin.'+HOST].map(pattern=>({pattern,custom_domain:true}));
  prepared.vars={...config.vars,IDENTITY_ENABLED:'true',IDENTITY_ROLLOUT:stage,IDENTITY_OWNER_MEMBER_ID:'owner',IDENTITY_BASE_DOMAIN:HOST,IDENTITY_ADMIN_ACCESS_AUD:admin.aud,IDENTITY_GOOGLE_BOOTSTRAP_ENABLED:'false',...Object.fromEntries(methods.map(m=>['IDENTITY_'+m+'_ENABLED','true']))};
+ if(stage==='member-beta')prepared.vars.IDENTITY_BETA_MEMBER_IDS=JSON.stringify(snapshot.beta.memberIds.slice().sort());
  for(const name of ['ADMIN_ACCESS_TEAM_DOMAIN','ADMIN_ACCESS_AUD','ADMIN_ACCESS_APP_ID','TURNSTILE_SITE_KEY','GOOGLE_CLIENT_ID','MICROSOFT_CLIENT_ID'])assert.ok(!Object.hasOwn(prepared.vars,name)||prepared.vars[name]===value(name),'Configuration would replace validated '+name);
  return prepared;
 }
@@ -75,5 +89,5 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const prepared=validateIdentityRelease(JSON.parse(readFileSync('dist/server/wrangler.json','utf8')),snapshot,stage,commit);
  const serialized=JSON.stringify(prepared,null,2)+'\n',output='dist/server/identity-release.json';
  writeFileSync(output,serialized);
- console.log(JSON.stringify({prepared:output,stage,commit,configSha256:createHash('sha256').update(serialized).digest('hex'),next:'Review dry run, refresh the protected backup, apply additive identity schema, provision verified principals, and deploy this exact configuration. No remote changes performed.'}));
+ console.log(JSON.stringify({prepared:output,stage,commit,configSha256:createHash('sha256').update(serialized).digest('hex'),next:'Review dry run, verify protected recovery and existing schema/principal evidence, then deploy this exact configuration. No remote changes performed.'}));
 }

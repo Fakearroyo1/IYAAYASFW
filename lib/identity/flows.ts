@@ -121,7 +121,7 @@ export async function redeem(db:D1Database,env:IdentitySettings,flowId:string,co
    const verifier=random();
    statements.push(sql(db,"INSERT INTO identity_flows(id,purpose,audience,destination_browser,verifier,verifier_hash,return_path,register_browser,member_id,epoch,grant_id,created_at,expires_at) VALUES(?,'enroll',?,?,?,?,?,?,?,?,?,?,?)",nextFlow,audience,destinationBrowser,verifier,digest(verifier),'/identity',f.register_browser,m.id,m.epoch,grantId,now,Math.min(now+300000,f.proof_at!+300000)));
    next=c.register+'/identity?flow='+encodeURIComponent(nextFlow);
-  }else next='/identity?approval='+encodeURIComponent(grantId);
+  }else next=(audience==='admin'?'/?view=admin&section=members&workspace=identity&approval=':'/identity?approval=')+encodeURIComponent(grantId);
  }else{
   if(audience!=='member'||!f.credential_id)fail();
   token=sessionToken();const hash=digest(token),absolute=now+(m.role==='admin'?43200000:2592000000),idle=m.role==='admin'?1800000:604800000;

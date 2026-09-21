@@ -56,20 +56,22 @@ export default {
     let response: Response|undefined;
     try{
       const identity=config(env),url=new URL(request.url),host=identityHost(env,url);
+      const membersSection=['identity','members'].includes(url.searchParams.get('section')||''),identityWorkspace=url.searchParams.get('section')==='identity'||url.searchParams.get('workspace')==='identity';
+      const memberManagementQuery=membersSection?'section=members'+(identityWorkspace?'&workspace=identity':''):'';
       let principal;
       if(identity.enabled){
         if(!host)throw new RequestError('Unknown application host.',421);
         headers.set('x-identity-audience',host==='admin'?'admin':'member');
         if(host==='member'&&request.method==='GET'&&(path==='/api/admin/access'||path==='/'&&url.searchParams.get('view')==='admin')){
           const memberSession=env.DB?await readSession(env.DB,request,'member'):null;
-          if(env.IDENTITY_ROLLOUT==='all-approved'||memberSession&&await usesAdminHost(env.DB!,env,memberSession.memberId))response=Response.redirect(identity.admin+'/?view=admin'+(url.searchParams.get('section')==='identity'?'&section=identity':''),303);
+          if(env.IDENTITY_ROLLOUT==='all-approved'||memberSession&&await usesAdminHost(env.DB!,env,memberSession.memberId))response=Response.redirect(identity.admin+'/?view=admin'+(memberManagementQuery?'&'+memberManagementQuery:''),303);
         }
         if(host==='admin'){
           if(!env.DB)throw new RequestError('Administrator sign-in is unavailable.',503);
           principal=await accessPrincipal(env.DB,env,request);
           const user=await readSession(env.DB,request,'admin');
           if(user&&user.principalId!==principal.id)throw new RequestError('Administrator accounts do not match.',403);
-          if(!user&&!['/identity','/identity/api','/theme.js'].includes(path)&&!/^\/(?:_next|_vinext|assets|brand)\//.test(path))response=Response.redirect(identity.admin+'/identity'+(url.searchParams.get('section')==='identity'?'?section=identity':''),303);
+          if(!user&&!['/identity','/identity/api','/theme.js'].includes(path)&&!/^\/(?:_next|_vinext|assets|brand)\//.test(path))response=Response.redirect(identity.admin+'/identity'+(memberManagementQuery?'?'+memberManagementQuery:''),303);
           if(path==='/login')response=Response.redirect(identity.admin+'/identity',303);
         }
         if((host==='auth'||host==='register')&&path==='/')response=Response.redirect(url.origin+'/identity',303);

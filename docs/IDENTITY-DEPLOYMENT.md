@@ -48,12 +48,39 @@ Keep `IDENTITY_GOOGLE_FRESH_ENABLED=false` until branding approval, Session age
 claims and a real fresh-proof test establish support. Do not weaken the
 five-minute signed authentication-time requirement to bypass Google settings.
 
-The owner account suite is at `https://admin.iyaayasfw.com/?view=admin&section=identity`,
-under **Members & community → Accounts & sign-in**. It includes member-bound
+The owner account suite is at `https://admin.iyaayasfw.com/?view=admin&section=members&workspace=identity`,
+under **Members & community → Members & access → Sign-in, invitations & CSV**.
+The same screen also contains member purchasing permissions. Existing account-suite links
+redirect here, including the return from fresh owner verification. It includes member-bound
 invitations, independent login-request review and previewed CSV imports. CSV
 templates contain existing member IDs; blank fields preserve stored values.
 No email/name similarity authorizes a link, and methods cannot be transferred
 between members or used to merge financial history.
+
+## Current-member beta
+
+The owner explicitly requested that the members already on the site test the deployed
+features as a small beta group. Use the same checked manual procedure with the explicit
+`member-beta` stage. This does not satisfy or remove any `all-approved` requirement.
+The private snapshot must record the owner's beta authorization, the fixed member IDs,
+the exact active-roster SQL and its fresh successful D1 response, verified owner mapping,
+and passing owner Google/Microsoft/iPhone/MFA-denial/recovery results. Unknown, inactive,
+duplicate, malformed or empty cohorts fail preparation. Retain pending acceptance tests
+as pending, with `fullReleaseReady: false`.
+
+The prepared `IDENTITY_BETA_MEMBER_IDS` binding contains only those immutable IDs.
+It is private deployment configuration, excluded from Git and public context responses.
+An email domain, invitation, CSV creation or later activation cannot add a member to this
+cohort. Any expansion requires another explicitly approved, checked release. Password
+login and existing sessions remain available. Rollback to owner-smoke denies new beta
+flows even if a previous list remains; the per-method switches still apply at redemption.
+The unmapped administrator retains the existing MFA path until independently verified.
+
+When identity is enabled, the server refuses new First Time setup codes. Adding a member
+opens the owner's invitation tools; non-owner admins see the owner handoff instructions.
+Existing issued codes can still be redeemed and password recovery is unchanged. During
+beta, newly imported/created members require a reviewed cohort update before invitation
+enrollment. This feature update requires no schema migration.
 
 `all-approved` preparation additionally requires both explicit admin mappings and
 recorded passing Google, Microsoft, iPhone/Safari, Android/Chrome, desktop,

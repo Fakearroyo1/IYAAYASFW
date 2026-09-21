@@ -203,6 +203,9 @@ export default function Pilot() {
   const [emailTarget,setEmailTarget]=useState<Row|null>(null);
   const [inboxType,setInboxType]=useState("");
   const [identityContext,setIdentityContext]=useState<Row|null>(null);
+  const [memberWorkspace,setMemberWorkspace]=useState<'roster'|'identity'>('roster');
+  const [identityMemberId,setIdentityMemberId]=useState<string|undefined>();
+  function showMemberSignIn(id?:string){setIdentityMemberId(id);setMemberWorkspace('identity');setTab('members');}
   const [taskTarget,setTaskTarget]=useState({type:"",id:""});
   const [gearRevision, setGearRevision] = useState(0);
   const [gearId, setGearId] = useState(""),
@@ -281,9 +284,9 @@ export default function Pilot() {
   }
   useEffect(() => {
     setCart(loadCart());
-    const section=new URLSearchParams(window.location.search).get('section');
-    if(section==='identity')setTab('identity');
-    void fetch('/identity/api',{cache:'no-store'}).then(r=>r.json() as Promise<Row>).then(c=>{if(c.enabled)setIdentityContext(c);}).catch(()=>{});
+    const params=new URLSearchParams(window.location.search),section=params.get('section');
+    if(section==='identity'||section==='members'){setTab('members');if(section==='identity'||params.get('workspace')==='identity')setMemberWorkspace('identity');}
+    void fetch('/identity/api',{cache:'no-store'}).then(r=>r.json() as Promise<Row>).then(c=>{setIdentityContext(c);}).catch(()=>{});
     try {
       const p = JSON.parse(sessionStorage.getItem("supply-pending") || "null");
       if (p) setPending(p);
@@ -502,15 +505,14 @@ export default function Pilot() {
         );
       }
       if (j.created && j.memberId) {
-        setModal({
-          kind: "setup",
-          id: j.memberId,
-          name: request.name,
-          email: request.email,
-        });
-        setNotice(
-          "Member added. Generate a private setup code for their First Time sign-in.",
-        );
+        if(identityContext?.enabled===false){
+          setModal({kind:"setup",id:j.memberId,name:request.name,email:request.email});
+          setNotice("Member added. Generate a private setup code for their First Time sign-in.");
+        }else{
+          setModal(null);
+          if(identityContext?.owner)showMemberSignIn(j.memberId);
+          setNotice("Member added. The owner can manage private invitations in Members & access. New members need approval for beta enrollment.");
+        }
       }
       if (request.action === "saveGear") {
         setGearId(request.id);
@@ -945,9 +947,8 @@ export default function Pilot() {
           </div>
         </div>
         <div className="management-workspace">
-        <AdminNavigation identityOwner={!!identityContext?.owner} value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next)}} />
+        <AdminNavigation value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next)}} />
         <div className="admin-content">
-          {tab==='identity'&&identityContext?.owner?<IdentityPage embedded/>:null}
           {["overview", "settings"].includes(tab) ? shopControls() : null}
           {data.admin.resetCount ? (
             <div className="notice reset-notice">
@@ -1276,14 +1277,15 @@ export default function Pilot() {
             <section className="panel">
               <div className="section-title">
                 <div>
-                  <h2>Member access</h2>
+                  <h2>Members &amp; access</h2>
                   <p className="fine">
-                    Approve emails, choose purchasing access, and manage account
-                    recovery.
+                    Manage purchasing access, sign-in methods, and private invitations.
                   </p>
                 </div>
                 <Button onClick={() => open("member")}>Add member</Button>
               </div>
+              {identityContext?.owner&&<nav className="identity-choices" aria-label="Members and access sections"><Button variant={memberWorkspace==='roster'?'default':'outline'} aria-current={memberWorkspace==='roster'?'page':undefined} onClick={()=>setMemberWorkspace('roster')}>Members &amp; permissions</Button><Button variant={memberWorkspace==='identity'?'default':'outline'} aria-current={memberWorkspace==='identity'?'page':undefined} onClick={()=>showMemberSignIn()}>Sign-in, invitations &amp; CSV</Button></nav>}
+              {(!identityContext?.owner||memberWorkspace==='roster')&&<>
               <div className="admin-filters">
                 <Field label="Search members">
                   <Input
@@ -1350,7 +1352,7 @@ export default function Pilot() {
                       {!m.active ? (
                         <span className="status rejected">Access disabled</span>
                       ) : !m.password_set ? (
-                        <span className="status pending">First Time setup</span>
+                        <span className="status pending">{identityContext?.enabled===false?'First Time setup':'No password set'}</span>
                       ) : null}
                       {m.role !== "admin" ? (
                         <span className="status">
@@ -1382,14 +1384,13 @@ export default function Pilot() {
                           Edit member
                         </Button>
                         {!m.isOwner && (owner || m.role!=="admin")?<Button variant="ghost" onClick={()=>{setEmailTarget(m);setTab("access")}}>Change email</Button>:null}
-                        <Button
+                        {identityContext?.owner&&<Button variant="outline" onClick={()=>showMemberSignIn(m.id)}>Sign-in &amp; invitations</Button>}
+                        {(m.password_set||identityContext?.enabled===false)&&<Button
                           variant="outline"
-                          onClick={() =>
-                            open(m.password_set ? "password" : "setup", m)
-                          }
+                          onClick={() => open(m.password_set ? "password" : "setup", m)}
                         >
                           {m.password_set ? "Recovery code" : "Setup code"}
-                        </Button>
+                        </Button>}
                       </>
                     ) : (
                       <span className="fine">Managed by owner</span>
@@ -1398,6 +1399,8 @@ export default function Pilot() {
                 </div>
               ))}
               {historyControl("members", true)}
+              </>}
+              {identityContext?.owner&&memberWorkspace==='identity'&&<IdentityPage key={identityMemberId||'all-members'} embedded initialMemberId={identityMemberId}/>}
             </section>
           ) : tab === "activity" ? (
             <>
@@ -2839,7 +2842,7 @@ export default function Pilot() {
                     <p className="fine">
                       {modal.id
                         ? "Disabling sign-in revokes every remembered device."
-                        : "Next, generate a private setup code. The member uses First Time to choose their own password."}
+                        : identityContext?.enabled===false?"Next, generate a private setup code. The member uses First Time to choose their own password.":"Next, the owner can issue a private invitation from Members & access. New members need approval for beta enrollment."}
                     </p>
                     <Button type="submit">
                       {modal.id ? "Save member" : "Add member"}

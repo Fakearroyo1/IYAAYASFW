@@ -12,7 +12,7 @@ This change extends the identity branch reviewed at `00c738b534153a7e4dd7352234b
 
 ## Import new members
 
-1. Open Accounts & sign-in on the administrator host, then CSV import.
+1. Open **Members & access → Sign-in, invitations & CSV → CSV import** on the administrator host.
 2. Choose **Import new members** and **Download CSV template**.
 3. Open the file in Excel. Keep its column headings and enter one member per row.
 4. Save as **CSV UTF-8 (.csv)**, then upload or drop the file into the importer.
@@ -41,6 +41,19 @@ Duplicate primary emails (including disabled members) are skipped or reported fo
 Choose **Update existing members** and download its template, which supplies existing IDs. The legacy six-column contract remains supported. Blank cells preserve current values. Explicit access changes use the existing revocation triggers; consumed or revoked provider reservations are not renewed. The legacy Microsoft bootstrap column remains recognized for compatibility, but automatic Microsoft association is still disabled; use invitations.
 
 A template for more than 100 existing members still requires separate batches under the existing limit. The new-member template is independent of current roster size and contains headings only.
+
+## Current-member beta
+
+The owner-authorized beta enables new methods for a fixed list of existing active members.
+CSV and manual creation remain available, but new members do not automatically join this
+list. Their detail screen explains when enrollment needs an approved cohort update.
+Members already in the beta can sign in with their existing password, open **Linked methods**,
+and verify an existing method to add Google, Personal Microsoft or a passkey. Google
+ordinary login is available; account-change verification uses password, passkey or Microsoft.
+
+Manual Add member now opens the same member's invitation tools. The identity-enabled
+server no longer issues legacy First Time setup codes. Previously issued codes retain
+their original expiry and redemption behavior; existing password recovery is unchanged.
 
 ## Private invitations
 

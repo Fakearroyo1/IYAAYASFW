@@ -17,6 +17,16 @@ const approval=async(n,target)=>{
 const pending=await F.newFlow(db,C.digest('login'),'/');await F.authenticated(db,await C.flow(db,pending),credentials[0]);
 await rejects(()=>F.issueHandoff(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},pending),'owner smoke cannot issue member handoff');
 await rejects(()=>F.issueHandoff(db,{...env,IDENTITY_PASSKEY_ENABLED:'false'},pending),'disabled method cannot issue handoff');
+const betaEnv={...env,IDENTITY_ROLLOUT:'member-beta',IDENTITY_BETA_MEMBER_IDS:JSON.stringify(['owner','member'])};
+check(C.rolloutAllowsMember(betaEnv,'member'),'existing listed member can test new methods');
+check(!C.rolloutAllowsMember(betaEnv,'future-member'),'a future or imported member does not automatically join beta');
+for(const list of ['invalid','["member","member"]','["member",42]','["member","bad id"]'])check(!C.rolloutAllowsMember({...betaEnv,IDENTITY_BETA_MEMBER_IDS:list},'member'),'malformed beta list fails closed');
+check(!C.rolloutAllowsMember({...betaEnv,IDENTITY_ROLLOUT:'owner-smoke'},'member'),'a retained beta list cannot expand owner-smoke');
+const betaFlow=await F.newFlow(db,C.digest('beta-login'),'/');await F.authenticated(db,await C.flow(db,betaFlow),credentials[0]);
+const betaParts=new URLSearchParams(new URL(await F.issueHandoff(db,betaEnv,betaFlow)).hash.slice(1));
+await rejects(()=>F.redeem(db,{...betaEnv,IDENTITY_BETA_MEMBER_IDS:'["owner"]'},betaFlow,betaParts.get('code'),C.digest('beta-login'),'member',null),'removing beta authority after proof prevents login completion');
+const betaLogin=await F.redeem(db,betaEnv,betaFlow,betaParts.get('code'),C.digest('beta-login'),'member',null);
+check(!!betaLogin.token,'listed beta member can complete bound handoff');
 const handoff=new URLSearchParams(new URL(await F.issueHandoff(db,env,pending)).hash.slice(1));
 await rejects(()=>F.redeem(db,{...env,IDENTITY_PASSKEY_ENABLED:'false'},pending,handoff.get('code'),C.digest('login'),'member',null),'method kill switch applies after proof');
 await rejects(()=>F.redeem(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},pending,handoff.get('code'),C.digest('login'),'member',null),'audience rollback applies at final redemption');
@@ -54,6 +64,7 @@ sqlite.prepare('INSERT INTO auth_credentials VALUES(?,?,?)').run('second','synth
 const secondToken=C.sessionToken();sqlite.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(C.digest(secondToken),'second',now,now+600000);
 const secondRequest=new Request('https://identity.test',{headers:{Cookie:'__Host-supply-session='+secondToken}});
 check((await S.applicationSession(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},secondRequest,'member')).role==='admin','unmapped existing administrator keeps the established route until verification');
+check((await S.applicationSession(db,betaEnv,secondRequest,'member')).role==='admin','beta preserves the unmapped administrator legacy MFA path');
 sqlite.prepare("INSERT INTO identity_admin_principals(id,issuer,subject,member_id,status,provisioned_at,evidence) VALUES('second-principal','https://fixture.cloudflareaccess.com','second-subject','second','revoked',?,'synthetic')").run(now);
 check((await S.applicationSession(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},secondRequest,'member')).role==='member','revoked migrated mapping cannot restore apex administrator authority');
 check((await S.applicationSession(db,env,request,'member')).role==='member','final cutover removes apex administrator authority');

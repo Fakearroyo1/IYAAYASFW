@@ -109,6 +109,7 @@ export async function POST(request:Request){
   // Recheck access in the write transaction, including after expensive password hashing.
   const accessGuard=()=>db.prepare("INSERT INTO guards(id,valid) VALUES(?,CASE WHEN EXISTS(SELECT 1 FROM members actor JOIN members target ON target.id=? WHERE actor.id=? AND actor.active=1 AND actor.role='admin' AND EXISTS(SELECT 1 FROM auth_sessions s WHERE s.member_id=actor.id AND s.token_hash=? AND s.expires_at>? AND s.created_at>? AND EXISTS(SELECT 1 FROM auth_admin_access a WHERE a.token_hash=s.token_hash AND a.expires_at>?)) AND (target.role<>'admin' OR target.id=actor.id OR lower(actor.email)=?) AND COALESCE((SELECT version FROM member_controls WHERE member_id=target.id),0)=?) THEN 1 ELSE 0 END)").bind(crypto.randomUUID(),b.memberId,admin.memberId,admin.tokenHash,Date.now(),Date.now()-12*3600000,Date.now(),OWNER_EMAIL,target.controls_version);
   if(b.action==='issueSetup'){
+   if(env.IDENTITY_ENABLED==='true')return json({error:'First Time setup-code generation has been retired. Use a member-bound private invitation in Members & access.'},409);
    const code=randomBytes(12).toString('hex'),now=Date.now(),expiresAt=now+7*86400000;
    const eligible=await db.prepare('SELECT id FROM members WHERE id=? AND active=1 AND NOT EXISTS(SELECT 1 FROM auth_credentials WHERE member_id=members.id)').bind(target.id).first();
    if(!eligible)return json({error:'Setup codes are only for active members who have not set a password.'},400);
