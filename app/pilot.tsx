@@ -511,7 +511,7 @@ export default function Pilot() {
         }else{
           setModal(null);
           if(identityContext?.owner)showMemberSignIn(j.memberId);
-          setNotice("Member added. The owner can manage private invitations in Members & access. New members need approval for beta enrollment.");
+          setNotice("Member added to the whitelist. The owner can now share a private invitation from Members & access.");
         }
       }
       if (request.action === "saveGear") {
@@ -2842,7 +2842,7 @@ export default function Pilot() {
                     <p className="fine">
                       {modal.id
                         ? "Disabling sign-in revokes every remembered device."
-                        : identityContext?.enabled===false?"Next, generate a private setup code. The member uses First Time to choose their own password.":"Next, the owner can issue a private invitation from Members & access. New members need approval for beta enrollment."}
+                        : identityContext?.enabled===false?"Next, generate a private setup code. The member uses First Time to choose their own password.":"This adds the member to the whitelist. Next, the owner can share a private invitation from Members & access."}
                     </p>
                     <Button type="submit">
                       {modal.id ? "Save member" : "Add member"}

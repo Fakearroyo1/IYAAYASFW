@@ -55,14 +55,12 @@ export function validateIdentityRelease(config,snapshot,stage,commit){
  assert.equal(snapshot.recovery?.restore,'passed');assert.equal(snapshot.recovery?.keyRetrievedFromVault,true);
  assert.ok(Date.now()-Date.parse(snapshot.recovery?.verifiedAt)<86400000,'Refresh protected recovery evidence before release.');
  if(stage==='member-beta'){
-  assert.equal(snapshot.beta?.authorization,'owner-request-current-member-beta','Record the explicit owner beta request.');
-  const ids=snapshot.beta?.memberIds;
-  assert.ok(Array.isArray(ids)&&ids.length>0&&ids.length<=100&&ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(id))&&new Set(ids).size===ids.length,'Beta must name 1–100 unique existing member IDs.');
-  assert.ok(ids.includes('owner'),'Keep the verified owner in the beta.');
+  assert.equal(snapshot.beta?.authorization,'owner-request-whitelist-registration','Record the explicit owner request for whitelist-controlled registration without another beta unlock.');
+  assert.equal(snapshot.beta?.audience,'active-member-whitelist');
   assert.equal(snapshot.beta?.sql,'SELECT id,role FROM members WHERE active=1 ORDER BY id');
   const roster=get('/d1/database/'+DB+'/query');
   assert.equal(roster.length,1);assert.equal(roster[0].success,true);
-  assert.ok(ids.every(id=>roster[0].results.some(row=>row.id===id)),'Beta cannot include an unknown or inactive member.');
+  assert.ok(roster[0].results.some(row=>row.id==='owner'&&row.role==='admin'),'Verify the owner remains an active whitelisted administrator.');
   for(const gate of ['google','microsoft','iphoneSafari','adminMfaDenial','ownerRecovery'])assert.equal(snapshot.realTests?.[gate],'passed','Missing owner acceptance before beta: '+gate);
   assert.ok(snapshot.mappedAdminMembers?.includes('owner'),'The owner needs a verified administrator mapping.');
   assert.equal(snapshot.beta?.fullReleaseReady,false,'Beta is not a completed full-release acceptance.');
@@ -75,7 +73,6 @@ export function validateIdentityRelease(config,snapshot,stage,commit){
  prepared.d1_databases[0].database_id=DB;
  prepared.routes=[HOST,'auth.'+HOST,'register.'+HOST,'admin.'+HOST].map(pattern=>({pattern,custom_domain:true}));
  prepared.vars={...config.vars,IDENTITY_ENABLED:'true',IDENTITY_ROLLOUT:stage,IDENTITY_OWNER_MEMBER_ID:'owner',IDENTITY_BASE_DOMAIN:HOST,IDENTITY_ADMIN_ACCESS_AUD:admin.aud,IDENTITY_GOOGLE_BOOTSTRAP_ENABLED:'false',...Object.fromEntries(methods.map(m=>['IDENTITY_'+m+'_ENABLED','true']))};
- if(stage==='member-beta')prepared.vars.IDENTITY_BETA_MEMBER_IDS=JSON.stringify(snapshot.beta.memberIds.slice().sort());
  for(const name of ['ADMIN_ACCESS_TEAM_DOMAIN','ADMIN_ACCESS_AUD','ADMIN_ACCESS_APP_ID','TURNSTILE_SITE_KEY','GOOGLE_CLIENT_ID','MICROSOFT_CLIENT_ID'])assert.ok(!Object.hasOwn(prepared.vars,name)||prepared.vars[name]===value(name),'Configuration would replace validated '+name);
  return prepared;
 }

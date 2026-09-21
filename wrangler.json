@@ -25,7 +25,6 @@
   "vars": {
     "IDENTITY_ENABLED": "false",
     "IDENTITY_ROLLOUT": "owner-smoke",
-    "IDENTITY_BETA_MEMBER_IDS": "[]",
     "IDENTITY_GOOGLE_ENABLED": "false",
     "IDENTITY_GOOGLE_FRESH_ENABLED": "false",
     "IDENTITY_MICROSOFT_ENABLED": "false",

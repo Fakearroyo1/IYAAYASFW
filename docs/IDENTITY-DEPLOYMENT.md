@@ -57,30 +57,28 @@ templates contain existing member IDs; blank fields preserve stored values.
 No email/name similarity authorizes a link, and methods cannot be transferred
 between members or used to merge financial history.
 
-## Current-member beta
+## Whitelist-controlled member beta
 
-The owner explicitly requested that the members already on the site test the deployed
-features as a small beta group. Use the same checked manual procedure with the explicit
-`member-beta` stage. This does not satisfy or remove any `all-approved` requirement.
-The private snapshot must record the owner's beta authorization, the fixed member IDs,
-the exact active-roster SQL and its fresh successful D1 response, verified owner mapping,
-and passing owner Google/Microsoft/iPhone/MFA-denial/recovery results. Unknown, inactive,
-duplicate, malformed or empty cohorts fail preparation. Retain pending acceptance tests
-as pending, with `fullReleaseReady: false`.
+The owner explicitly requested that current members test the deployed system and that
+whitelist additions work without additional rollout unlocks. Use the same checked manual
+procedure with the explicit `member-beta` stage. All active existing and future members
+are eligible; there is no separate beta ID list. The existing whitelist remains authoritative:
+member-bound invitations, verified existing-account proof, active status and current-state
+transactional guards are still required. Provider email alone never creates membership.
+Disabling a member prevents enrollment and sign-in, including a ceremony already in progress.
 
-The prepared `IDENTITY_BETA_MEMBER_IDS` binding contains only those immutable IDs.
-It is private deployment configuration, excluded from Git and public context responses.
-An email domain, invitation, CSV creation or later activation cannot add a member to this
-cohort. Any expansion requires another explicitly approved, checked release. Password
-login and existing sessions remain available. Rollback to owner-smoke denies new beta
-flows even if a previous list remains; the per-method switches still apply at redemption.
-The unmapped administrator retains the existing MFA path until independently verified.
+The private release snapshot records the owner's whitelist-registration authorization,
+the active-roster query, verified owner mapping and passing owner Google/Microsoft/iPhone/
+MFA-denial/recovery results. Keep unfinished real tests pending with `fullReleaseReady: false`.
+This stage enables the complete member workflow without claiming completed full acceptance.
+The unmapped administrator retains the established MFA path until independently verified;
+admin migration is separate from member registration and never grants authority by email.
 
 When identity is enabled, the server refuses new First Time setup codes. Adding a member
-opens the owner's invitation tools; non-owner admins see the owner handoff instructions.
-Existing issued codes can still be redeemed and password recovery is unchanged. During
-beta, newly imported/created members require a reviewed cohort update before invitation
-enrollment. This feature update requires no schema migration.
+opens that member's invitation tools; non-owner admins see the owner handoff instructions.
+CSV-created active members can use invitations immediately, without a second allowlist or
+another deployment. Previously issued codes remain redeemable until their existing expiry,
+and password recovery is unchanged. This feature update requires no schema migration.
 
 `all-approved` preparation additionally requires both explicit admin mappings and
 recorded passing Google, Microsoft, iPhone/Safari, Android/Chrome, desktop,

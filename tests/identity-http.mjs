@@ -162,19 +162,19 @@ try{
  const ownerStageRoute=await request(domain,'/?view=admin&section=identity',undefined,headers(ownerMember));
  check(ownerStageRoute.status===303&&ownerStageRoute.headers.get('location')==='https://admin.test.local/?view=admin&section=members&workspace=identity','owner-stage server redirect preserves account suite');
  check(!(await (await request(domain,'/api/pilot',undefined,headers(ownerMember))).json()).admin,'owner-stage member session has no administrator dashboard authority');
- await mf.setOptions({...mfOptions,bindings:{...settings,IDENTITY_ROLLOUT:'member-beta',IDENTITY_BETA_MEMBER_IDS:'["owner","member"]'}});db=await mf.getD1Database('DB');
+ await mf.setOptions({...mfOptions,bindings:{...settings,IDENTITY_ROLLOUT:'member-beta'}});db=await mf.getD1Database('DB');
  const betaContext=await context(member);check(betaContext.c.rollout.eligible===true&&!JSON.stringify(betaContext.c).includes('IDENTITY_BETA_MEMBER_IDS'),'member sees their own beta eligibility without roster disclosure');
  check((await post(member,{action:'start',purpose:'add:passkey'})).status===200,'listed member can begin beta fresh verification');
- const outsideDetail=await (await post(admin,{action:'adminRead',target:'new-member'})).json();check(outsideDetail.member.rolloutEligible===false,'future member cannot enroll through beta invitation');
+ const outsideDetail=await (await post(admin,{action:'adminRead',target:'new-member'})).json();check(outsideDetail.member.rolloutEligible===true,'newly whitelisted member can enroll without another beta unlock');
  const beforeRollbackSessions=(await db.prepare("SELECT count(*) n FROM auth_sessions WHERE member_id='member'").first()).n;
- await mf.setOptions({...mfOptions,bindings:{...settings,IDENTITY_ROLLOUT:'member-beta',IDENTITY_BETA_MEMBER_IDS:'["owner"]'}});db=await mf.getD1Database('DB');
- check((await context(member)).c.rollout.eligible===false,'beta removal is visible immediately');
- check((await post(member,{action:'start',purpose:'add:passkey'})).status===403,'unlisted member cannot begin new enrollment');
+ await mf.setOptions({...mfOptions,bindings:{...settings,IDENTITY_ROLLOUT:'owner-smoke'}});db=await mf.getD1Database('DB');
+ check((await context(member)).c.rollout.eligible===false,'rollback to owner stage is visible immediately');
+ check((await post(member,{action:'start',purpose:'add:passkey'})).status===403,'owner-stage rollback blocks new member enrollment');
  const ownerApproval=new URL(ownerCompleteBody.next,'https://admin.test.local').searchParams.get('approval');await context(admin);
- check((await post(admin,{action:'admin',payload:ownerAction,approval:ownerApproval})).status===403,'owner cannot issue an unusable invitation outside current beta');
+ check((await post(admin,{action:'admin',payload:ownerAction,approval:ownerApproval})).status===403,'owner cannot issue an unusable invitation outside rollback stage');
  check((await db.prepare('SELECT status FROM identity_grants WHERE id=?').bind(ownerApproval).first()).status==='pending','denied invitation does not consume fresh proof or change grants');
- check((await request(domain,'/api/pilot',undefined,headers(member))).status===200,'beta change preserves existing member session and store access');
- check((await db.prepare("SELECT count(*) n FROM auth_sessions WHERE member_id='member'").first()).n===beforeRollbackSessions,'beta checks do not revoke existing sessions');
+ check((await request(domain,'/api/pilot',undefined,headers(member))).status===200,'stage rollback preserves existing member session and store access');
+ check((await db.prepare("SELECT count(*) n FROM auth_sessions WHERE member_id='member'").first()).n===beforeRollbackSessions,'stage checks do not revoke existing sessions');
  check(unexpectedOutbound===0,'no production/provider traffic sent');
  const result={suite:'identity-http',checks,providers:'synthetic',mfa:'signed fixture only',runtime:'compiled Worker and isolated D1',passedAt:new Date().toISOString()};writeFileSync('.sites-runtime/identity-http-results.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await mf.dispose();}

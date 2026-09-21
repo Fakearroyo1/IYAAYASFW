@@ -42,18 +42,19 @@ Choose **Update existing members** and download its template, which supplies exi
 
 A template for more than 100 existing members still requires separate batches under the existing limit. The new-member template is independent of current roster size and contains headings only.
 
-## Current-member beta
+## Whitelist-controlled registration
 
-The owner-authorized beta enables new methods for a fixed list of existing active members.
-CSV and manual creation remain available, but new members do not automatically join this
-list. Their detail screen explains when enrollment needs an approved cohort update.
-Members already in the beta can sign in with their existing password, open **Linked methods**,
-and verify an existing method to add Google, Personal Microsoft or a passkey. Google
-ordinary login is available; account-change verification uses password, passkey or Microsoft.
+New methods are enabled for every active member on the existing whitelist, including
+members added later manually or through CSV. No extra beta list or rollout unlock is needed.
+Members with an existing password can open **Linked methods**, verify it, and add Google,
+Personal Microsoft or a passkey. A new member uses their private member-bound invitation.
+Provider email by itself does not authorize registration. Disabled or unknown members
+cannot finish registration, even if a provider signs them in or they hold an old invitation.
+Google ordinary login is available; account-change verification uses password, passkey or Microsoft.
 
-Manual Add member now opens the same member's invitation tools. The identity-enabled
-server no longer issues legacy First Time setup codes. Previously issued codes retain
-their original expiry and redemption behavior; existing password recovery is unchanged.
+Manual Add member opens the same member's invitation tools. The identity-enabled server
+no longer issues legacy First Time setup codes. Previously issued codes retain their original
+expiry and redemption behavior; existing password recovery is unchanged.
 
 ## Private invitations
 

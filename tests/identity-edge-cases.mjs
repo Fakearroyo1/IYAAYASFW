@@ -17,14 +17,13 @@ const approval=async(n,target)=>{
 const pending=await F.newFlow(db,C.digest('login'),'/');await F.authenticated(db,await C.flow(db,pending),credentials[0]);
 await rejects(()=>F.issueHandoff(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},pending),'owner smoke cannot issue member handoff');
 await rejects(()=>F.issueHandoff(db,{...env,IDENTITY_PASSKEY_ENABLED:'false'},pending),'disabled method cannot issue handoff');
-const betaEnv={...env,IDENTITY_ROLLOUT:'member-beta',IDENTITY_BETA_MEMBER_IDS:JSON.stringify(['owner','member'])};
-check(C.rolloutAllowsMember(betaEnv,'member'),'existing listed member can test new methods');
-check(!C.rolloutAllowsMember(betaEnv,'future-member'),'a future or imported member does not automatically join beta');
-for(const list of ['invalid','["member","member"]','["member",42]','["member","bad id"]'])check(!C.rolloutAllowsMember({...betaEnv,IDENTITY_BETA_MEMBER_IDS:list},'member'),'malformed beta list fails closed');
-check(!C.rolloutAllowsMember({...betaEnv,IDENTITY_ROLLOUT:'owner-smoke'},'member'),'a retained beta list cannot expand owner-smoke');
+const betaEnv={...env,IDENTITY_ROLLOUT:'member-beta'};
+check(C.rolloutAllowsMember(betaEnv,'member'),'whitelisted members can test new methods');
+check(!C.rolloutAllowsMember({...betaEnv,IDENTITY_ROLLOUT:'owner-smoke'},'member'),'explicit rollback to owner-smoke remains effective');
+await rejects(()=>C.member(db,'unknown-member'),'deployment stage cannot create membership for an unknown identity');
 const betaFlow=await F.newFlow(db,C.digest('beta-login'),'/');await F.authenticated(db,await C.flow(db,betaFlow),credentials[0]);
 const betaParts=new URLSearchParams(new URL(await F.issueHandoff(db,betaEnv,betaFlow)).hash.slice(1));
-await rejects(()=>F.redeem(db,{...betaEnv,IDENTITY_BETA_MEMBER_IDS:'["owner"]'},betaFlow,betaParts.get('code'),C.digest('beta-login'),'member',null),'removing beta authority after proof prevents login completion');
+await rejects(()=>F.redeem(db,{...betaEnv,IDENTITY_ROLLOUT:'owner-smoke'},betaFlow,betaParts.get('code'),C.digest('beta-login'),'member',null),'owner-stage rollback after proof prevents member login completion');
 const betaLogin=await F.redeem(db,betaEnv,betaFlow,betaParts.get('code'),C.digest('beta-login'),'member',null);
 check(!!betaLogin.token,'listed beta member can complete bound handoff');
 const handoff=new URLSearchParams(new URL(await F.issueHandoff(db,env,pending)).hash.slice(1));
@@ -68,4 +67,14 @@ check((await S.applicationSession(db,betaEnv,secondRequest,'member')).role==='ad
 sqlite.prepare("INSERT INTO identity_admin_principals(id,issuer,subject,member_id,status,provisioned_at,evidence) VALUES('second-principal','https://fixture.cloudflareaccess.com','second-subject','second','revoked',?,'synthetic')").run(now);
 check((await S.applicationSession(db,{...env,IDENTITY_ROLLOUT:'owner-smoke'},secondRequest,'member')).role==='member','revoked migrated mapping cannot restore apex administrator authority');
 check((await S.applicationSession(db,env,request,'member')).role==='member','final cutover removes apex administrator authority');
+// A member added later needs no release-setting change; whitelist revocation still wins.
+sqlite.prepare("INSERT INTO members(id,email,name,role) VALUES('later','later@example.test','Later','member')").run();
+const laterInsert=F.credentialInsert(db,'later',{...syntheticProof,credentialId:'later-fixture',userHandle:'later-fixture'},'synthetic-authorized-invitation');await laterInsert.statement.run();
+const laterCredential=await C.one(db,'SELECT * FROM identity_credentials WHERE id=?',laterInsert.credentialId),laterDestination=C.digest('later-browser');
+const laterFlow=await F.newFlow(db,laterDestination,'/');await F.authenticated(db,await C.flow(db,laterFlow),laterCredential);
+const laterHandoff=new URLSearchParams(new URL(await F.issueHandoff(db,betaEnv,laterFlow)).hash.slice(1));
+check(!!laterHandoff.get('code'),'newly whitelisted member is eligible without another unlock');
+sqlite.prepare("UPDATE members SET active=0 WHERE id='later'").run();
+await rejects(()=>F.redeem(db,betaEnv,laterFlow,laterHandoff.get('code'),laterDestination,'member',null),'whitelist removal during sign-in denies final access');
+check(sqlite.prepare("SELECT count(*) n FROM auth_sessions WHERE member_id='later'").get().n===0,'disabled whitelist member receives no partial session');
 console.log(`${checks} identity rollout, method-disable, existing-proof, and last-method race checks passed.`);sqlite.close();
