@@ -6,6 +6,8 @@ Jake is the sole recovery custodian. Recovery does not depend on the snackbar ap
 
 On September 21, 2026, the owner generated a key in a private local form, saved it in the password manager, then independently retrieved and verified that key. An encrypted D1 snapshot and encrypted R2 archive were restored into memory only: 88 application tables, 10 views and all 21 objects matched; 21 database image references resolved. Repeating the additive identity schema preserved every prior table/view digest. A containment rehearsal affected only the in-memory copy and revoked pending access. Production was not restored or modified by the drill.
 
+The 03:39 UTC post-deployment archive repeated full reconciliation with 102 tables, 10 views and 21 images; all preexisting business records matched the pre-migration archive. At 03:50 UTC, that archive also passed the stale-access rehearsal: synthetic old methods, administrator mapping, setup/recovery codes, invitation, session, ceremony and handoff were invalidated in memory. All restored accounts were kept inactive pending independent owner verification. Original financial/history/privacy rows and password hashes remained unchanged; the existing accounting cache revision incremented as expected for access-only member updates. No actual account was disabled by this drill.
+
 After being asked to rehearse independent Cloudflare, GitHub, Google and Microsoft access using an alternate secured method in another browser session, the owner reported "Account access is good" on September 21, 2026. This is owner-attested account recovery evidence; the agent did not observe the private authentication steps. Application administrator MFA denial remains a separate release check.
 
 ## Locate and verify backups
@@ -17,6 +19,8 @@ The backup tools never print keys or record contents. Use the project's PowerShe
 For a new backup, inventory the entire private R2 bucket, including all pages. Export D1 twice and require matching schema and all table/view digests; retry if writes occurred between snapshots. D1 blocks database requests briefly during each export. Download every inventoried object, retain HTTP/custom metadata in the encrypted archive, then compare another complete R2 inventory. This is not an atomic cross-service snapshot: accept it only when object versions and all database references reconcile. Redo the backup if either side changes.
 
 Verify both archives with `backup-with-key.ps1 -Mode verify`, supplying the database archive, `-Assets`, the fresh `-Inventory`, and `-RehearseMigration`. Decryption and SQL restore use memory only; no public preview or production target exists in this command. On Windows, transient plaintext export directories have an owner-only ACL and are removed after encryption. A failed operation is not a passed recovery gate.
+
+For an archive containing the identity schema, add `-RehearseStaleIdentity` to test the closed-access recovery path with synthetic stale authority in memory. Add `-Baseline` with the earlier encrypted database archive to reconcile all its business tables/views against the current one; session/rate-limit/Access-cache/guard changes are expected operational exceptions. The stale rehearsal intentionally blocks all access in its disposable copy. It produces a verification receipt, not a deployable restored database, and cannot target production or a disk-backed database.
 
 ## If the app or a provider is unavailable
 

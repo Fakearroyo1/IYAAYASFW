@@ -2,17 +2,17 @@
 
 **Not ready for roster-wide release. Owner testing is deployed.** Target: 08:00 America/New_York. The owner authorized implementation, Cloudflare edits, protected backup/recovery and specific live tests on Jake's existing account, plus explicit Access mappings for Jake and Mason. No team messages or bulk invitations are authorized. Mason is unavailable; the owner deferred his test, so his mapping remains pending and the established administration path stays available.
 
-Deployed candidate: `04e98c4`, Worker version `bca4e070-9008-4427-b730-119b689edf59`, at 03:24 UTC. [PR #17](https://github.com/Fakearroyo1/IYAAYASFW/pull/17) remains draft. [Linux CI run 51](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35557020558) passed application suites, dependency audit and the complete history secret scan. The only new scanner exception matches the exact public baseline commit value in two named evidence documents.
+Deployed candidate: `c0acdf5`, Worker version `756c190e-4899-430d-aa0d-d5843ab15a7f`, at 03:45 UTC. [PR #17](https://github.com/Fakearroyo1/IYAAYASFW/pull/17) remains draft. [Linux CI run 52](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35558380918) passed application suites, dependency audit and the complete history secret scan. The only new scanner exception matches the exact public baseline commit value in two named evidence documents. The following offline recovery/documentation follow-up does not change the deployed Worker.
 
 ## Readiness
 
 | Area | Evidence status | Remaining gate |
 |---|---|---|
-| Google | REAL ATTEMPT FAILED | Owner returned from Google with a generic failure; flow remained at fresh verification with no linked method. Fix restricts proof choices to existing methods; repeat real enrollment and login. |
+| Google | REAL TESTED / DEPLOYED VERIFIED | After the fresh-choice fix, owner reported linking success. Live records show one active Google method on the existing owner member and completed enrollment/login after session revocation. Provider-based fresh reauthentication remains untested. |
 | Personal Microsoft | MOCK-ONLY | Same real checks; organizational accounts remain rejected |
 | Passkeys | MOCK-ONLY | Real iPhone/Safari, Android/Chrome and desktop flows; both phones are available |
-| Administrator host | OWNER-REPORTED ACCESS SUCCESS / configuration verified | Success does not establish factor cancellation/denial/expiration; those remain pending. Mason mapping/test deferred. |
-| Backup recovery | REAL TESTED | Refresh protected snapshot before migration if data changes |
+| Administrator host | OWNER-REPORTED ACCESS SUCCESS AND PRIVATE-WINDOW BLOCK | Owner could not reach management without Cloudflare Access; exact factor-cancellation versus earlier sign-in denial is being clarified. Expiration and Mason mapping/test remain pending. |
+| Backup recovery | REAL TESTED / stale-access canaries | Full archive restore and closed-access stale snapshot rehearsal passed; refresh protected snapshot if data changes |
 | Owner emergency account control | REAL TESTED / owner-attested | Owner reported account access good after the independent recovery rehearsal request; private authentication was not observed by the agent |
 | Legacy password and commerce | Locally tested | Final candidate CI and deployed owner smoke |
 | Sixty concurrent shared-NAT logins | MOCK-ONLY / compiled runtime passed | Final CI and deployed smoke; no production load test |
@@ -46,6 +46,8 @@ At 02:37 UTC, independent key retrieval and isolated memory restore passed. Ever
 
 At 03:39 UTC, a post-deployment encrypted database snapshot and memory restore passed with 102 application tables, 10 views and all 21 image references. All preexisting business tables and views matched the 03:22 pre-migration snapshot exactly; only operational session/rate-limit/access-cache/guard tables were excluded from that cross-snapshot comparison. A prior attempt during owner sign-in activity correctly refused inconsistent consecutive exports.
 
+At 03:50 UTC, the same protected archive passed a stale-identity recovery rehearsal. Synthetic stale OAuth/passkey credentials, an administrator principal, setup/recovery codes, invitation, session, ceremony and handoff were added only to the restored in-memory copy. The unknown-revocation-evidence path closed all restored member access, revoked methods/principals, invalidated sessions and pending authority, and denied cutover pending independent owner verification. Original member fields except the intentional active-access flag, passwords, business tables/views, privacy and history matched. The existing accounting cache revision advanced by exactly the number of member updates. This is an actual archive restore with synthetic stale-access canaries, not a production restore or a real compromise simulation. The rehearsal refuses disk-backed databases and has no remote-write path.
+
 ## Candidate validation
 
 - Typecheck, main build and gear dry build passed.
@@ -58,4 +60,4 @@ All protocol tests above use synthetic providers/authenticators and isolated sto
 
 The compiled UI was checked at desktop and 390-pixel phone widths in a local read-only preview. All three methods and password fallback were visible; no horizontal overflow; keyboard focus reached Google with a visible outline. This does not replace the real-device acceptance gate. See [all 65 acceptance cases](IDENTITY-ACCEPTANCE-2026-09-21.csv) and the added phase columns in [the feature register](FEATURE-REGISTER.csv) for partial coverage.
 
-Owner smoke found that fresh verification showed unlinked methods, and the store did not make the linked-method page easy to find. The follow-up limits fresh choices to active credentials that predate the flow and match the current provider client/RP, rejects unlinked starts on the server, and adds a visible store-wide Linked methods shortcut. Consumed OIDC callback failures record only fixed error categories and a fresh-proof flag; raw provider exceptions remain excluded. The original provider failure has not yet been reproduced with the corrected flow. The Google discovery metadata was checked against the official endpoint and still declares the authorization-response issuer parameter; that check was retained.
+Owner smoke found that fresh verification showed unlinked methods, and the store did not make the linked-method page easy to find. The deployed follow-up limits fresh choices to active credentials that predate the flow and match the current provider client/RP, rejects unlinked starts on the server, and adds a visible store-wide Linked methods shortcut. The shortcut was checked in the compiled store at 390-pixel width with no horizontal overflow. Consumed OIDC callback failures record only fixed error categories and a fresh-proof flag; raw provider exceptions remain excluded. The original provider failure has not yet been reproduced with the corrected flow. The Google discovery metadata was checked against the official endpoint and still declares the authorization-response issuer parameter; that check was retained. Live anonymous route/cookie/Access/gear checks passed again after deployment; encrypted secret bindings and owner-smoke settings were read back unchanged.

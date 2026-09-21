@@ -3,6 +3,7 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {decryptBackup} from './backup-crypto.mjs';
 import {restoreMemory,databaseManifest,compareManifests,sha256} from './backup-manifest.mjs';
+import {rehearseStaleIdentity} from './rehearse-stale-identity.mjs';
 const args=process.argv.slice(2),option=name=>args.includes(name)?args[args.indexOf(name)+1]:null;
 const plaintext=decryptBackup(readFileSync(args[0]),process.env.BACKUP_ENCRYPTION_KEY).toString('utf8');
 const bundle=JSON.parse(plaintext);if(bundle.format!=='iyaayasfw-d1-v2')throw Error('A full-manifest database backup is required.');
@@ -47,6 +48,7 @@ const db=restoreMemory(bundle.sql);try{
   if(target){db.prepare('UPDATE members SET active=0 WHERE id=?').run(target.id);db.prepare('UPDATE members SET active=1 WHERE id=?').run(target.id);if(db.prepare('SELECT count(*) n FROM auth_setup WHERE member_id=?').get(target.id).n||db.prepare('SELECT count(*) n FROM auth_recovery WHERE member_id=?').get(target.id).n||db.prepare('SELECT count(*) n FROM auth_sessions WHERE member_id=?').get(target.id).n)throw Error('Restored containment left pending access.');}
   migration='repeat application preserves all prior tables/views; isolated containment revokes pending access';
  }
- const result={isolatedRestore:'passed',environment:'memory only, no server or remote writes',tables:Object.values(before.objects).filter(x=>x.type==='table').length,views:Object.values(before.objects).filter(x=>x.type==='view').length,allTableAndViewDigests:'matched',immutableMemberAndBalanceState:'matched',priorBusinessState,schemaAndForeignKeys:'passed',assets:assetCount,imageReferences:referenceCount,migration,verifiedAt:new Date().toISOString()};
+ const staleIdentity=args.includes('--rehearse-stale-identity')?rehearseStaleIdentity(db):'not requested';
+ const result={isolatedRestore:'passed',environment:'memory only, no server or remote writes',tables:Object.values(before.objects).filter(x=>x.type==='table').length,views:Object.values(before.objects).filter(x=>x.type==='view').length,allTableAndViewDigests:'matched',immutableMemberAndBalanceState:'matched',priorBusinessState,schemaAndForeignKeys:'passed',assets:assetCount,imageReferences:referenceCount,migration,staleIdentity,verifiedAt:new Date().toISOString()};
  writeFileSync(args[0]+'.verification.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{db.close()}
