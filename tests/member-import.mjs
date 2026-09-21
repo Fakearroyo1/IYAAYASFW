@@ -117,6 +117,26 @@ equal((await apply(bulk)).applied,60,'60 new members committed');
 equal(JSON.stringify(sqlite.prepare("SELECT * FROM members WHERE id IN ('owner','old','disabled') ORDER BY id").all()),originalMembers,'existing member records untouched');
 equal(JSON.stringify(sqlite.prepare("SELECT * FROM identity_state WHERE member_id IN ('owner','old','disabled') ORDER BY member_id").all()),existingIdentity,'existing member identity handles and epochs untouched');
 for(const [table,before] of businessBefore)equal(businessSnapshot(table),before,'preserved '+table);
+// Imported explicit grants survive a disabled feature and activate without reimport.
+const heldEnv={...env,IDENTITY_ROLLOUT:'member-beta',IDENTITY_GOOGLE_BOOTSTRAP_ENABLED:'false'},liveEnv={...heldEnv,IDENTITY_GOOGLE_BOOTSTRAP_ENABLED:'true'};
+const held=await I.previewImport(db,heldEnv,owner,csv([row('Staged Google','staged@example.test','staged@gmail.com'),row('No Google grant','no-grant@gmail.com'),row('Later disabled','later-disabled@example.test','later-disabled@gmail.com')]),'create');
+check(held.rows[0].warnings.some(w=>w.includes('preauthorization will wait')),'disabled feature explains pending preauthorization');
+const heldPayload=payloadFor(held);
+equal((await I.commitImport(db,heldEnv,owner,heldPayload,await authorize(heldPayload))).applied,3,'imports explicit grants while feature is off');
+const heldMember=sqlite.prepare("SELECT id FROM members WHERE email='staged@example.test'").get(),heldCount=count();
+const proofFor=(email,subject)=>({kind:'google',issuer:P.ISSUERS.google,subject,clientId:env.GOOGLE_CLIENT_ID,email,bootstrapEmail:email,tenant:null,objectId:null,authTime:Date.now()});
+async function tryAssociation(settings,email,subject){const id=await F.newFlow(db,C.digest(C.random()),'/');return F.associateProvider(db,settings,proofFor(email,subject),await C.flow(db,id));}
+equal(await tryAssociation(heldEnv,'staged@gmail.com','staged-subject'),null,'flag off does not associate stored grant');
+equal(sqlite.prepare("SELECT status FROM identity_grants WHERE member_id=? AND kind='bootstrap'").get(heldMember.id).status,'pending','failed attempt leaves grant usable');
+const stagedCredential=await tryAssociation(liveEnv,'staged@gmail.com','staged-subject');
+equal(stagedCredential.member_id,heldMember.id,'enabling consumes the original preauthorization for its original member');
+equal(sqlite.prepare("SELECT status FROM identity_grants WHERE member_id=? AND kind='bootstrap'").get(heldMember.id).status,'consumed','successful association consumes grant');
+equal(count(),heldCount,'activation does not create or reimport members');
+equal(await tryAssociation(liveEnv,'no-grant@gmail.com','unapproved-subject'),null,'primary roster email without an explicit grant cannot register');
+equal(await tryAssociation(liveEnv,'unknown@gmail.com','unknown-subject'),null,'unknown Google user cannot register');
+sqlite.prepare("UPDATE members SET active=0 WHERE email='later-disabled@example.test'").run();
+equal(await tryAssociation(liveEnv,'later-disabled@gmail.com','disabled-subject'),null,'disabled whitelist member cannot use a prior grant');
+equal(sqlite.prepare("SELECT count(*) n FROM identity_credentials WHERE subject IN ('staged-subject','unapproved-subject','unknown-subject','disabled-subject')").get().n,1,'only the explicitly authorized active member receives a credential');
 // Revoking the method used for fresh proof stops even a consumed approval mid-import.
 const revokedPreview=await preview(csv([row('Revoked proof','revoked-proof@example.test')]));
 const revokedPayload=payloadFor(revokedPreview),revokedGrant=await authorize(revokedPayload);

@@ -47,7 +47,10 @@ A template for more than 100 existing members still requires separate batches un
 New methods are enabled for every active member on the existing whitelist, including
 members added later manually or through CSV. No extra beta list or rollout unlock is needed.
 Members with an existing password can open **Linked methods**, verify it, and add Google,
-Personal Microsoft or a passkey. A new member uses their private member-bound invitation.
+Personal Microsoft or a passkey. With Google preauthorization enabled, a new member with
+an explicit Google grant can choose Google on the normal sign-in page and use that exact
+Google account. Existing pending, unexpired grants become usable without reimporting.
+A new member without that grant uses their private member-bound invitation.
 Provider email by itself does not authorize registration. Disabled or unknown members
 cannot finish registration, even if a provider signs them in or they hold an old invitation.
 Google ordinary login is available; account-change verification uses password, passkey or Microsoft.

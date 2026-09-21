@@ -69,10 +69,21 @@ export function validateIdentityRelease(config,snapshot,stage,commit){
   for(const gate of ['google','microsoft','iphoneSafari','androidChrome','desktop','adminMfaDenial','ownerRecovery','legacyCommerceSmoke'])assert.equal(snapshot.realTests?.[gate],'passed','Missing real test: '+gate);
   assert.deepEqual(snapshot.mappedAdminMembers?.slice().sort(),['owner','659acffe-8042-49de-a2cf-9db261aef0e5'].sort(),'Both administrators require verified mappings before cutover.');
  }
+ // Preserve the approved live bootstrap state unless the owner explicitly changes it.
+ const liveBootstrap=value('IDENTITY_GOOGLE_BOOTSTRAP_ENABLED')??'false';
+ assert.ok(['true','false'].includes(liveBootstrap),'Invalid live Google preauthorization setting.');
+ let googleBootstrap=liveBootstrap;
+ if(snapshot.googleBootstrap!==undefined){
+  assert.equal(typeof snapshot.googleBootstrap?.enabled,'boolean');
+  assert.equal(snapshot.googleBootstrap.authorization,'owner-request-google-preauthorization');
+  assert.equal(snapshot.googleBootstrap.mode,'explicit-member-bound-grants');
+  googleBootstrap=String(snapshot.googleBootstrap.enabled);
+ }
+ if(googleBootstrap==='true')assert.equal(snapshot.realTests?.google,'passed','Verify ordinary Google sign-in before enabling preauthorized association.');
  const prepared=structuredClone(config);
  prepared.d1_databases[0].database_id=DB;
  prepared.routes=[HOST,'auth.'+HOST,'register.'+HOST,'admin.'+HOST].map(pattern=>({pattern,custom_domain:true}));
- prepared.vars={...config.vars,IDENTITY_ENABLED:'true',IDENTITY_ROLLOUT:stage,IDENTITY_OWNER_MEMBER_ID:'owner',IDENTITY_BASE_DOMAIN:HOST,IDENTITY_ADMIN_ACCESS_AUD:admin.aud,IDENTITY_GOOGLE_BOOTSTRAP_ENABLED:'false',...Object.fromEntries(methods.map(m=>['IDENTITY_'+m+'_ENABLED','true']))};
+ prepared.vars={...config.vars,IDENTITY_ENABLED:'true',IDENTITY_ROLLOUT:stage,IDENTITY_OWNER_MEMBER_ID:'owner',IDENTITY_BASE_DOMAIN:HOST,IDENTITY_ADMIN_ACCESS_AUD:admin.aud,IDENTITY_GOOGLE_BOOTSTRAP_ENABLED:googleBootstrap,...Object.fromEntries(methods.map(m=>['IDENTITY_'+m+'_ENABLED','true']))};
  for(const name of ['ADMIN_ACCESS_TEAM_DOMAIN','ADMIN_ACCESS_AUD','ADMIN_ACCESS_APP_ID','TURNSTILE_SITE_KEY','GOOGLE_CLIENT_ID','MICROSOFT_CLIENT_ID'])assert.ok(!Object.hasOwn(prepared.vars,name)||prepared.vars[name]===value(name),'Configuration would replace validated '+name);
  return prepared;
 }

@@ -42,4 +42,18 @@ assert.throws(()=>validateIdentityRelease(config,beta,'all-approved',commit),'Be
 for(const mutate of [s=>delete s.beta.authorization,s=>s.beta.audience='public',s=>s.beta.fullReleaseReady=true,s=>s.beta.sql='SELECT id FROM members',s=>delete s.responses[rosterPath],s=>s.responses[rosterPath].result[0].success=false,s=>s.responses[rosterPath].result[0].results=[],s=>s.mappedAdminMembers=[],s=>s.realTests.adminMfaDenial='pending']){
  const broken=structuredClone(beta);mutate(broken);assert.throws(()=>validateIdentityRelease(config,broken,'member-beta',commit));checks++;
 }
+assert.equal(preparedBeta.vars.IDENTITY_GOOGLE_BOOTSTRAP_ENABLED,'false');checks++;
+const bootstrap=structuredClone(beta);
+bootstrap.googleBootstrap={enabled:true,authorization:'owner-request-google-preauthorization',mode:'explicit-member-bound-grants'};
+const enabled=validateIdentityRelease(config,bootstrap,'member-beta',commit);
+assert.equal(enabled.vars.IDENTITY_GOOGLE_BOOTSTRAP_ENABLED,'true');assert.equal(enabled.vars.IDENTITY_GOOGLE_FRESH_ENABLED,'false');checks++;
+assert.throws(()=>validateIdentityRelease(config,bootstrap,'all-approved',commit),'Bootstrap authorization cannot satisfy missing full-release acceptance');checks++;
+for(const mutate of [s=>delete s.googleBootstrap.authorization,s=>s.googleBootstrap.mode='any-roster-email',s=>s.googleBootstrap.enabled='true',s=>s.realTests.google='pending',s=>s.responses['/workers/scripts/iyaayasfw-supply/settings'].result.bindings.push({name:'IDENTITY_GOOGLE_BOOTSTRAP_ENABLED',type:'plain_text',text:'invalid'})]){
+ const broken=structuredClone(bootstrap);mutate(broken);assert.throws(()=>validateIdentityRelease(config,broken,'member-beta',commit));checks++;
+}
+const preserve=structuredClone(beta);
+preserve.responses['/workers/scripts/iyaayasfw-supply/settings'].result.bindings.push({name:'IDENTITY_GOOGLE_BOOTSTRAP_ENABLED',type:'plain_text',text:'true'});
+assert.equal(validateIdentityRelease(config,preserve,'member-beta',commit).vars.IDENTITY_GOOGLE_BOOTSTRAP_ENABLED,'true','Routine release retains the approved live setting');checks++;
+preserve.googleBootstrap={...bootstrap.googleBootstrap,enabled:false};
+assert.equal(validateIdentityRelease(config,preserve,'member-beta',commit).vars.IDENTITY_GOOGLE_BOOTSTRAP_ENABLED,'false','Explicit rollback can disable bootstrap');checks++;
 console.log(`${checks} manual identity release gate checks passed; no remote operations.`);

@@ -17,8 +17,17 @@ Run `node scripts/prepare-identity-release.mjs <private-snapshot.json> owner-smo
 <commit>` on one line. This only writes `dist/server/identity-release.json`. Review
 the prepared config and use the installed Wrangler's deploy dry run. The prepared
 config retains runtime variables and secrets, uses the original D1/R2, sets all
-three new methods on for the owner stage, keeps automatic email bootstrap off,
+three new methods on for the owner stage, preserves the approved Google preauthorization setting,
 and adds only the four exact approved hosts.
+
+Google preauthorization defaults off when absent. An explicit owner-authorized change
+uses private snapshot `googleBootstrap: {enabled: true, authorization:
+"owner-request-google-preauthorization", mode: "explicit-member-bound-grants"}`.
+Preparation requires passing ordinary Google sign-in evidence and retains every other
+release gate. Later releases preserve the live setting; an explicit false override
+supports rollback. This enables only existing one-use, member-bound grants for
+Google-authoritative addresses, never matching arbitrary roster emails. It does not
+enable Google fresh account-change proof. No migration or import replay is needed.
 
 Before the first live deployment:
 
