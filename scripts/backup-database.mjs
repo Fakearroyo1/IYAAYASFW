@@ -11,12 +11,12 @@ const temp=privateTemporaryDirectory(),directory=temp.directory,startedAt=new Da
 try{
  const config={name:'iyaayasfw-backup',account_id:'60bbba10092a452ee58b3bff5c92a894',d1_databases:[{binding:'DB',database_name:'iyaayasfw-supply-db',database_id:'ed7e63c8-77fd-4314-ab35-131c061e016a'}]};
  const configPath=join(directory,'wrangler.json');writeFileSync(configPath,JSON.stringify(config),{mode:0o600});
- const exports=[];
+ const exports=[],evaluationTime=Date.now();
  for(let pass=0;pass<2;pass++){
   const sqlPath=join(directory,'database-'+pass+'.sql');
   cloudflareRead(['d1','export','iyaayasfw-supply-db','--remote','--config',configPath,'--output',sqlPath]);
   const sql=readFileSync(sqlPath,'utf8'),db=restoreMemory(sql);
-  try{exports.push({sql,manifest:databaseManifest(db)});}finally{db.close();}
+  try{exports.push({sql,manifest:databaseManifest(db,{now:evaluationTime})});}finally{db.close();}
  }
  const changed=compareManifests(exports[0].manifest,exports[1].manifest);
  if(changed.length)throw Error('The database changed between snapshots. Retry during a quiet interval; no reconciled backup was accepted.');

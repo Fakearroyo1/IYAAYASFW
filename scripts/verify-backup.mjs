@@ -8,7 +8,8 @@ const args=process.argv.slice(2),option=name=>args.includes(name)?args[args.inde
 const plaintext=decryptBackup(readFileSync(args[0]),process.env.BACKUP_ENCRYPTION_KEY).toString('utf8');
 const bundle=JSON.parse(plaintext);if(bundle.format!=='iyaayasfw-d1-v2')throw Error('A full-manifest database backup is required.');
 const db=restoreMemory(bundle.sql);try{
- const before=databaseManifest(db);if(compareManifests(bundle.manifest,before).length)throw Error('Restored database does not match its full manifest.');
+ const evaluationTime=Date.parse(bundle.manifest.evaluatedAt||bundle.startedAt);
+ const before=databaseManifest(db,{now:evaluationTime});if(compareManifests(bundle.manifest,before).length)throw Error('Restored database does not match its full manifest.');
  let priorBusinessState='not compared';
  if(option('--baseline')){
   const prior=JSON.parse(decryptBackup(readFileSync(option('--baseline')),process.env.BACKUP_ENCRYPTION_KEY).toString('utf8'));
@@ -17,7 +18,13 @@ const db=restoreMemory(bundle.sql);try{
   // Every other preexisting table/view, including members and all business
   // history, must match. A concurrent commerce write requires human review.
   const transient=new Set(['auth_sessions','auth_limits','auth_admin_access','guards']);
-  const changed=compareManifests(prior.manifest,before,{schema:false}).filter(name=>!transient.has(name));
+  const priorDb=restoreMemory(prior.sql);let comparable;
+  try{
+   const original=databaseManifest(priorDb,{now:Date.parse(prior.manifest.evaluatedAt||prior.startedAt)});
+   if(compareManifests(prior.manifest,original).length)throw Error('Baseline restore does not match its original full manifest.');
+   comparable=databaseManifest(priorDb,{now:evaluationTime});
+  }finally{priorDb.close();}
+  const changed=compareManifests(comparable,before,{schema:false}).filter(name=>!transient.has(name));
   if(changed.length)throw Error('Preexisting business-state reconciliation needs review: '+changed.join(', '));
   priorBusinessState='all preexisting non-session/rate-limit tables and views matched';
  }
