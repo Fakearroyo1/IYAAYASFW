@@ -5,7 +5,8 @@ import {readSession,accessPrincipal,adminSession,requireOwner,usesAdminHost,type
 import {newFlow,adoptFlow,boundFlow,grantFor,claimInvite,bridgeInvite,associateProvider,storeEnrollmentProof,finishEnrollment,freshPassword,authenticated,issueHandoff,redeem} from './flows';
 import {startProvider,finishProvider,startPasskey,finishPasskey} from './providers';
 import {ownMethods,ownMutation,adminRead,adminMutation,payloadHash} from './manage';
-import {previewImport,commitImport} from './imports';
+import {previewImport,commitImport,readImport,importMode} from './imports';
+import {NEW_MEMBER_HEADERS,csvFile,MAX_ROSTER_BYTES} from './roster-format';
 type Runtime=IdentitySettings&{DB?:D1Database};
 const json=(value:unknown,status=200,cookies:string[]=[])=>{const headers=new Headers({'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','Content-Type':'application/json;charset=utf-8'});for(const c of cookies)headers.append('Set-Cookie',c);return new Response(JSON.stringify(value),{status,headers});};
 const redirect=(url:string,cookies:string[]=[])=>{const headers=new Headers({Location:url,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'});for(const value of cookies)headers.append('Set-Cookie',value);return new Response(null,{status:303,headers});};
@@ -55,7 +56,8 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
    return json({enabled:true,host,origins:{member:c.member,auth:c.auth,register:c.register,admin:c.admin},methods:c.methods,management,csrf:csrfToken(request,browser),user:user?{name:user.displayName,id:user.memberId,audience:user.audience}:null,owner:!!user&&user.memberId===env.IDENTITY_OWNER_MEMBER_ID&&host==='admin'},200,cookies);
   }
   if(request.method!=='POST')return json({error:'Method not allowed.'},405);
-  verifyCsrf(request);const b=await readJson(request,70000),browser=browserHash(request),action=text(b.action,40);
+  // JSON doubles quotes/backslashes in a CSV upload. The decoded CSV retains its 64 KB limit.
+  verifyCsrf(request);const b=await readJson(request,MAX_ROSTER_BYTES*2+1024),browser=browserHash(request),action=text(b.action,40);
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(!await rateLimit(db,'identity-api:'+ip,1200,900000))fail('Too many attempts. Try again later.',429);
   if(action==='adminLogin'){
@@ -126,12 +128,14 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
   if(action==='adminRead')return json(await adminRead(db,env,user!,text(b.query||'',100),b.target?text(b.target,80):undefined));
   if(action==='importTemplate'){
    await requireOwner(db,user,env);
+   if(importMode(b.mode)==='create')return json({csv:csvFile([NEW_MEMBER_HEADERS]),filename:'iyaayasfw-new-members-template.csv'});
    const members=await all<{id:string}>(db,'SELECT id FROM members ORDER BY name,id LIMIT 101');
    if(members.length>100)fail('Prepare separate CSV batches of at most 100 existing member IDs.',400);
    const cell=(value:string)=>'"'+value.replace(/"/g,'""')+'"';
    return json({csv:'member_id,display_name,contact_email,google_bootstrap_email,microsoft_bootstrap_email,access_enabled\n'+members.map(m=>cell(m.id)+',,,,,').join('\n')});
   }
-  if(action==='importPreview')return json(await previewImport(db,env,user!,text(b.csv,65536)));
+  if(action==='importPreview')return json(await previewImport(db,env,user!,text(b.csv,65536),importMode(b.mode)));
+  if(action==='importReview')return json(await readImport(db,env,user!,text(b.batch,80),text(b.hash,64)));
   if(action==='admin'){
    if(!b.payload||typeof b.payload!=='object'||Array.isArray(b.payload))fail('Choose an action.',400);
    return json(b.payload.operation==='importCommit'?await commitImport(db,env,user!,b.payload,text(b.approval,80)):await adminMutation(db,env,user!,b.payload,text(b.approval,80)));

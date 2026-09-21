@@ -3338,3 +3338,9 @@ fieldset:disabled {
  .landing-footer nav { gap: 6px 20px; }
 }
 @media(prefers-reduced-motion:reduce) { .landing-primary { transition: none; } }
+
+.identity-upload{border:1px dashed var(--border,#bbb);border-radius:12px;padding:18px;margin:20px 0}.identity-import-help{margin:16px 0}.identity-import-help dt{overflow-wrap:anywhere}.identity-panel .identity-import-help dl>div{grid-template-columns:minmax(120px,1fr) 2fr}.identity-invitation-qr{display:inline-flex;background:#fff;padding:8px;border-radius:12px;margin:12px 0;max-width:100%}.identity-invitation-qr svg{max-width:100%;height:auto}.identity-panel summary{cursor:pointer;padding:10px 0}.identity-panel .identity-table button{white-space:normal}@media(max-width:540px){.identity-panel .identity-import-help dl>div{grid-template-columns:1fr;gap:4px}}
+
+.identity-table table{min-width:640px;width:100%}.identity-table td:last-child{min-width:240px}.identity-table td{min-width:70px}
+
+.identity-import-steps{list-style:decimal;padding-left:1.25rem;margin:16px 0}.identity-import-steps li{margin:6px 0}

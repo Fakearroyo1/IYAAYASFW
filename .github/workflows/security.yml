@@ -29,6 +29,7 @@ jobs:
       - run: pnpm run typecheck
       - run: node tests/auth-containment.mjs
       - run: node tests/identity.mjs
+      - run: node tests/member-import.mjs
       - run: node tests/identity-protocols.mjs
       - run: node tests/identity-edge-cases.mjs
       - run: node tests/identity-release.mjs
