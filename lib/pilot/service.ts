@@ -648,6 +648,10 @@ export async function mutate(
     )
       statements.push(
         stmt(db, "DELETE FROM auth_sessions WHERE member_id=?", id),
+        // Pending codes are authority too. Re-enabling an account must not
+        // resurrect codes issued before containment or a permission change.
+        stmt(db, "DELETE FROM auth_setup WHERE member_id=?", id),
+        stmt(db, "DELETE FROM auth_recovery WHERE member_id=?", id),
       );
     if (old)
       statements.push(

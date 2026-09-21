@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -22,8 +23,8 @@ fs.writeFileSync(
   `${out}/owner.mjs`,
   "export const OWNER_EMAIL='owner@example.test';",
 );
-const { mutate, readState } = await import(`${out}/service.mjs`);
-const { OWNER_EMAIL } = await import(`${out}/owner.mjs`);
+const { mutate, readState } = await import(pathToFileURL(`${out}/service.mjs`).href);
+const { OWNER_EMAIL } = await import(pathToFileURL(`${out}/owner.mjs`).href);
 const sqlite = new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for (const file of fs
@@ -90,7 +91,7 @@ const state = async () => {
     section: "activity",
     includeAdmin: true,
   });
-  const { historyPage, itemsForOrders } = await import(`${out}/history.mjs`);
+  const { historyPage, itemsForOrders } = await import(pathToFileURL(`${out}/history.mjs`).href);
   s.admin.members = (
     await historyPage(db, s.member, "members", { admin: true })
   ).records;
@@ -418,7 +419,25 @@ const memberChange = async (changes) => {
     ...changes,
   });
 };
+// Containment must cancel pending authority, not merely remembered sessions.
+const pendingCodes = () => {
+  const now = Date.now();
+  sqlite.prepare("INSERT OR REPLACE INTO auth_setup(member_id,code_hash,expires_at,created_by,created_at) VALUES(?,?,?,?,?)").run(currentMember.id, "fixture-setup", now + 600000, "owner", now);
+  sqlite.prepare("INSERT OR REPLACE INTO auth_recovery(member_id,code_hash,expires_at,created_by,created_at) VALUES(?,?,?,?,?)").run(currentMember.id, "fixture-recovery", now + 600000, "owner", now);
+};
+const pendingCount = () => sqlite.prepare("SELECT (SELECT COUNT(*) FROM auth_setup WHERE member_id=?) + (SELECT COUNT(*) FROM auth_recovery WHERE member_id=?) n").get(currentMember.id, currentMember.id).n;
+pendingCodes();
+await memberChange({ active: false });
+await memberChange({ active: true });
+check(pendingCount() === 0, "disable then re-enable cannot resurrect pending setup/recovery codes");
+check((await readState(db, user)).member.debt === currentMember.debt && (await readState(db, user)).member.credit === currentMember.credit, "containment preserves balances");
+pendingCodes();
+await memberChange({ role: "admin" });
+await memberChange({ role: "member" });
+check(pendingCount() === 0, "role changes cancel pending setup/recovery authority");
+pendingCodes();
 await memberChange({ snacks: false, gear: true });
+check(pendingCount() === 0, "shop permission changes cancel pending setup/recovery authority");
 check(
   (await readState(db, user)).products.every((p) => p.category === "Gear"),
   "gear-only API completely removes snack catalog",
@@ -764,9 +783,7 @@ check(
   (await product()).price === 275,
   "snack pricing always rounds upward to nearest quarter",
 );
-const { suggestedPrice, priceMargin, itemPerformance } = await import(
-  `${out}/pricing.mjs`
-);
+const { suggestedPrice, priceMargin, itemPerformance } = await import(pathToFileURL(`${out}/pricing.mjs`).href);
 check(
   suggestedPrice(100, 30, 0, true) === 150 &&
     suggestedPrice(100, 0, 0, true) === 100,

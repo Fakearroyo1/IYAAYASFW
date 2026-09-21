@@ -1,6 +1,7 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const manifest = JSON.parse(
   await readFile(
@@ -19,7 +20,7 @@ for (const asset of manifest) {
     throw new Error(`Asset checksum mismatch: ${asset.path}`);
   }
   const output = new URL(`../${asset.path}`, import.meta.url);
-  await mkdir(dirname(output.pathname), { recursive: true });
+  await mkdir(dirname(fileURLToPath(output)), { recursive: true });
   await writeFile(output, bytes);
 }
 console.log(

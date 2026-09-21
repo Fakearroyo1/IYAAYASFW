@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from 'node:sqlite';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,11 +7,11 @@ import ts from 'typescript';
 const out=path.resolve('.sites-runtime/admin-experience-tests');
 for(const f of fs.readdirSync('lib',{recursive:true}).filter(f=>f.endsWith('.ts'))){const dest=path.join(out,'lib',f.replace(/\.ts$/,'.mjs'));fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,ts.transpileModule(fs.readFileSync(path.join('lib',f),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from (["'])(\.{1,2}\/[^"']+)\1/g,'from "$2.mjs"'));}
 fs.writeFileSync(out+'/lib/pilot/owner.mjs',"export const OWNER_EMAIL='owner@example.test';");
-const {taskPage,updateTask}=await import(out+'/lib/pilot/tasks.mjs');
-const {mutateGuest,guestAdmin}=await import(out+'/lib/pilot/guest.mjs');
-const {codeHash,campaignCode,randomCode,sessionFor,receiptHash}=await import(out+'/lib/guest/common.mjs');
-const {campaignStatus}=await import(out+'/lib/guest/campaign-status.mjs');
-const {hash}=await import(out+'/lib/pilot/core.mjs');
+const {taskPage,updateTask}=await import(pathToFileURL(out+'/lib/pilot/tasks.mjs').href);
+const {mutateGuest,guestAdmin}=await import(pathToFileURL(out+'/lib/pilot/guest.mjs').href);
+const {codeHash,campaignCode,randomCode,sessionFor,receiptHash}=await import(pathToFileURL(out+'/lib/guest/common.mjs').href);
+const {campaignStatus}=await import(pathToFileURL(out+'/lib/guest/campaign-status.mjs').href);
+const {hash}=await import(pathToFileURL(out+'/lib/pilot/core.mjs').href);
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
 for(const f of ['drizzle/0000_tiny_shape.sql','drizzle/0001_absent_guardsmen.sql','AUTH-SCHEMA.sql','PRODUCT-SCHEMA.sql','SECURITY-SCHEMA.sql','BETA-SCHEMA.sql','ROUNDS-SCHEMA.sql','GUEST-SCHEMA.sql','AUTOPILOT-SCHEMA.sql','REWARDS-SCHEMA.sql','ADMIN-EXPERIENCE-SCHEMA.sql'])sqlite.exec(fs.readFileSync(f,'utf8'));
 const run=(sql,...v)=>sqlite.prepare(sql).run(...v),get=(sql,...v)=>sqlite.prepare(sql).get(...v),all=(sql,...v)=>sqlite.prepare(sql).all(...v);

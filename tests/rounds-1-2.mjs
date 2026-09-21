@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -22,14 +23,10 @@ fs.writeFileSync(
   out + "/owner.mjs",
   "export const OWNER_EMAIL='owner@example.test';",
 );
-const { mutate, readState, identity } = await import(out + "/service.mjs");
-const { mutateCommunity, communityPage } = await import(out + "/community.mjs");
-const { transactionDetail, correctionAmounts } = await import(
-  out + "/transactions.mjs"
-);
-const { adminSummary, productPerformance, historyPage } = await import(
-  out + "/history.mjs"
-);
+const { mutate, readState, identity } = await import(pathToFileURL(out + "/service.mjs").href);
+const { mutateCommunity, communityPage } = await import(pathToFileURL(out + "/community.mjs").href);
+const { transactionDetail, correctionAmounts } = await import(pathToFileURL(out + "/transactions.mjs").href);
+const { adminSummary, productPerformance, historyPage } = await import(pathToFileURL(out + "/history.mjs").href);
 const sqlite = new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for (const f of fs
@@ -523,7 +520,7 @@ const {
   cartValid,
   gearKey,
   canAddLine,
-} = await import(out + "/cart.mjs");
+} = await import(pathToFileURL(out + "/cart.mjs").href);
 const sample = {
   id: "shirt",
   category: "Gear",

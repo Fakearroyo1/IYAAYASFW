@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from 'node:sqlite';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,8 +11,8 @@ for(const file of fs.readdirSync('lib',{recursive:true}).filter(f=>f.endsWith('.
  fs.writeFileSync(dest,ts.transpileModule(fs.readFileSync(path.join('lib',file),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from (["'])(\.{1,2}\/[^"']+)\1/g,'from "$2.mjs"'));
 }
 fs.writeFileSync(out+'/lib/pilot/owner.mjs',"export const OWNER_EMAIL='owner@example.test';");
-const {rewardsPage,mutateRewards,memberFlairProfiles,earnedBadges}=await import(out+'/lib/pilot/rewards.mjs');
-const {communityPage}=await import(out+'/lib/pilot/community.mjs');
+const {rewardsPage,mutateRewards,memberFlairProfiles,earnedBadges}=await import(pathToFileURL(out+'/lib/pilot/rewards.mjs').href);
+const {communityPage}=await import(pathToFileURL(out+'/lib/pilot/community.mjs').href);
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
 const run=(sql,...v)=>sqlite.prepare(sql).run(...v),get=(sql,...v)=>sqlite.prepare(sql).get(...v),all=(sql,...v)=>sqlite.prepare(sql).all(...v);
 class S{constructor(sql,v=[]){this.sql=sql;this.v=v}bind(...v){return new S(this.sql,v)}async first(){return get(this.sql,...this.v)||null}async all(){return {results:all(this.sql,...this.v)}}async run(){return {meta:{changes:run(this.sql,...this.v).changes}}}}

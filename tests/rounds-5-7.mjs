@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -26,7 +27,7 @@ fs.writeFileSync(
   out + "/lib/pilot/owner.mjs",
   "export const OWNER_EMAIL='owner@example.test';",
 );
-const { mutateGuest, guestAdmin } = await import(out + "/lib/pilot/guest.mjs");
+const { mutateGuest, guestAdmin } = await import(pathToFileURL(out + "/lib/pilot/guest.mjs").href);
 const {
   codeHash,
   receiptHash,
@@ -37,28 +38,26 @@ const {
   verifiedToken,
   shippingQuote,
   validateAddress,
-} = await import(out + "/lib/guest/common.mjs");
+} = await import(pathToFileURL(out + "/lib/guest/common.mjs").href);
 const { guestQuote, submitGuestOrder, guestReceipt, expireGuestOrders } =
-  await import(out + "/lib/guest/orders.mjs");
+  await import(pathToFileURL(out + "/lib/guest/orders.mjs").href);
 const {
   mutateInventory,
   inventoryRows,
   monthReport,
   recommendation,
   countPriority,
-} = await import(out + "/lib/pilot/autopilot.mjs");
-const { mutateRewards, rewardsPage, rewardTotal } = await import(
-  out + "/lib/pilot/rewards.mjs"
-);
+} = await import(pathToFileURL(out + "/lib/pilot/autopilot.mjs").href);
+const { mutateRewards, rewardsPage, rewardTotal } = await import(pathToFileURL(out + "/lib/pilot/rewards.mjs").href);
 const {
   verifyPayment,
   applyCredit,
   transactionDetail,
   correctionAmounts,
   correctTransaction,
-} = await import(out + "/lib/pilot/transactions.mjs");
-const { batchAtomic } = await import(out + "/lib/pilot/core.mjs");
-const { safePng } = await import(out + "/lib/profile/png.mjs");
+} = await import(pathToFileURL(out + "/lib/pilot/transactions.mjs").href);
+const { batchAtomic } = await import(pathToFileURL(out + "/lib/pilot/core.mjs").href);
+const { safePng } = await import(pathToFileURL(out + "/lib/profile/png.mjs").href);
 const sqlite = new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for (const f of [
@@ -1213,7 +1212,7 @@ if (process.env.ROADMAP_FIXTURE_FILE) {
       { productId: "snack", qty: 12, reason: "Prepare for the unit event" },
     ],
   });
-  const { autopilotPage } = await import(out + "/lib/pilot/autopilot.mjs");
+  const { autopilotPage } = await import(pathToFileURL(out + "/lib/pilot/autopilot.mjs").href);
   fs.writeFileSync(
     process.env.ROADMAP_FIXTURE_FILE,
     JSON.stringify({
