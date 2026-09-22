@@ -51,6 +51,7 @@ export default {
       "/api/community",
       "/api/operations",
       "/api/roadmap",
+      "/api/workflows",
       "/api/profile-images",
     ].includes(path);
     let response: Response|undefined;
@@ -71,7 +72,7 @@ export default {
           principal=await accessPrincipal(env.DB,env,request);
           const user=await readSession(env.DB,request,'admin');
           if(user&&user.principalId!==principal.id)throw new RequestError('Administrator accounts do not match.',403);
-          if(!user&&!['/identity','/identity/api','/theme.js'].includes(path)&&!/^\/(?:_next|_vinext|assets|brand)\//.test(path))response=Response.redirect(identity.admin+'/identity'+(memberManagementQuery?'?'+memberManagementQuery:''),303);
+          if(!user&&!['/identity','/identity/api','/theme.js'].includes(path)&&!/^\/(?:_next|_vinext|assets|brand)\//.test(path))response=path.startsWith('/api/')?Response.json({error:'Administrator session expired. Verify access and retry the saved action.'},{status:401}):Response.redirect(identity.admin+'/identity'+(memberManagementQuery?'?'+memberManagementQuery:''),303);
           if(path==='/login')response=Response.redirect(identity.admin+'/identity',303);
         }
         if((host==='auth'||host==='register')&&path==='/')response=Response.redirect(url.origin+'/identity',303);
