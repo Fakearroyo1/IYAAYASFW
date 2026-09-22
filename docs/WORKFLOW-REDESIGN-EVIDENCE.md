@@ -243,4 +243,21 @@ at 1009px outside a navigation panel ending at 441px. With the fix, 136 compiled
 assertions pass at 320/390/430/1280px, light/dark and 200% zoom. These now open the menu, verify
 that its content fits inside the panel, select every secondary tool, verify the selected page,
 and check focus restoration. Application build and typecheck pass. This correction has no
-database or identity changes; its deployment is recorded below after candidate CI.
+database or identity changes.
+
+PR [#20](https://github.com/Fakearroyo1/IYAAYASFW/pull/20) was fast-forwarded into the approved
+release branch after [Linux CI 35676667093](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35676667093)
+passed all three jobs. The corrected deployed commit is
+62f7a87aa1864b388c7508d0e4b5b3d370e9474f, Worker version
+32568463-d143-46f0-844c-4ae8e73fd39f, deployment
+3d50c8be-34b1-44e9-8e69-4b86075726ae at 100% from 2026-09-22T01:46:27.670002Z
+(September 21 at 9:46 PM Eastern). The same checked member-beta preparation and dry-run procedure
+was used; the final configuration checksum is unchanged. No migration was applied.
+
+Fresh pre-release encrypted recovery verification passed at 01:42:40.769 UTC. The protected
+post-deployment comparison at 01:48:22.654 UTC found **no changed original objects** across all
+131 tables/views and no schema additions. All 20 unexpired sessions, credentials and member
+records matched exactly. The navigation stylesheet and JavaScript fetched from the live site
+matched the tested local build byte for byte. Fourteen live route checks passed again, and
+Cloudflare readback verified the exact commit tag, 100% version and unchanged bindings,
+logging, rollout and domains. Existing open browser tabs must refresh to load the corrected UI.
