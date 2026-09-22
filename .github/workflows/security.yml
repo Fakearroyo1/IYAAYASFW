@@ -27,6 +27,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
+      - run: node tests/auth-containment.mjs
+      - run: node tests/identity.mjs
+      - run: node tests/member-import.mjs
+      - run: node tests/workflow.mjs
+      - run: node tests/identity-protocols.mjs
+      - run: node tests/identity-edge-cases.mjs
+      - run: node tests/identity-release.mjs
       - run: node tests/pilot.mjs
       - run: node tests/beta.mjs
       - run: node tests/rounds-1-2.mjs
@@ -41,6 +48,11 @@ jobs:
       - run: node tests/ui-contracts.mjs
       - run: node tests/http-security.mjs
       - run: pnpm run build
+      - run: node tests/workflow-http.mjs
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node tests/workflow-browser.mjs
+      - run: node tests/identity-http.mjs
+      - run: node tests/shared-nat.mjs
       - run: node tests/experience-http.mjs
       - run: node tests/rounds-http.mjs
       - run: pnpm run build:gear

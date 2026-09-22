@@ -37,6 +37,7 @@ import { accessFor, canShop } from "./access";
 import { catalogState, extendedMutation } from "./products";
 import { placeOrder } from "./orders";
 import { EarningPlan } from "./earning";
+import {newMemberGoogle} from './new-member-google';
 export { PilotError } from "./core";
 export async function initialize(db: DB) {
   if (await first(db, "SELECT id FROM settings WHERE id='main'")) return;
@@ -66,11 +67,11 @@ export async function initialize(db: DB) {
 }
 export async function identity(
   db: DB,
-  user: { userId: string; email: string } | null,
+  user: { userId: string; email: string; memberId?:string; audience?:string } | null,
 ): Promise<Row | null> {
   if (!user) return null;
-  let m = await first(db, "SELECT * FROM members WHERE user_id=?", user.userId);
-  if (!m) {
+  let m = user.memberId ? await first(db,"SELECT * FROM members WHERE id=?",user.memberId) : await first(db, "SELECT * FROM members WHERE user_id=?", user.userId);
+  if (!m && !user.memberId) {
     const invite = await first(
       db,
       "SELECT * FROM members WHERE email=? AND user_id IS NULL AND active=1",
@@ -90,6 +91,7 @@ export async function identity(
   const c = await controls(db, m.id);
   return {
     ...m,
+    ...(user.audience==='member'?{role:'member'}:{}),
     tab_limit: c.tab_limit,
     posting_enabled: c.posting_enabled,
     controls_version: c.version,
@@ -648,6 +650,10 @@ export async function mutate(
     )
       statements.push(
         stmt(db, "DELETE FROM auth_sessions WHERE member_id=?", id),
+        // Pending codes are authority too. Re-enabling an account must not
+        // resurrect codes issued before containment or a permission change.
+        stmt(db, "DELETE FROM auth_setup WHERE member_id=?", id),
+        stmt(db, "DELETE FROM auth_recovery WHERE member_id=?", id),
       );
     if (old)
       statements.push(
@@ -734,6 +740,7 @@ export async function mutate(
         }),
       );
     if (balanceEarning) statements.push(...balanceEarning.finish());
+    if (!old) statements.push(...await newMemberGoogle(db,id,email,actor,!!active));
     await atomic(db, statements);
     return { ok: true, memberId: id, created: !old, roleChanged };
   }

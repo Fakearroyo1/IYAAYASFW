@@ -24,8 +24,8 @@ export function validateAmrMatching(mfa){
  const duration=mfa.amr_matching_session_duration;
  requireThat(duration===undefined||duration===null||duration===''||duration==='0m'||duration==='0h',error+' The duration-based AMR setting is enabled or invalid.');
 }
-export function validateAccess(app,policies,organization,audience,issuer){
- requireThat(app.type==='self_hosted'&&app.domain===HOST+'/api/admin/access','Access must protect the exact administrator verification callback.');
+export function validateAccess(app,policies,organization,audience,issuer,expectedDomain=HOST+'/api/admin/access'){
+ requireThat(app.type==='self_hosted'&&app.domain===expectedDomain,'Access must protect the exact administrator boundary.');
  requireThat(app.aud===audience,'Access audience does not match the Worker runtime variable.');
  requireThat(organization.auth_domain===new URL(issuer).hostname,'Access issuer does not match the account organization.');
  requireThat(shortSession(app.session_duration),'Access application session must be 30 minutes or less.');

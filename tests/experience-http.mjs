@@ -13,7 +13,7 @@ const mf=new Miniflare({cf:false,compatibilityDate:'2026-05-15',compatibilityFla
 let checks=0;const ok=(v,message)=>{assert.ok(v,message);checks++};
 try{
  const db=await mf.getD1Database('DB');
- for(const file of ['drizzle/0000_tiny_shape.sql','drizzle/0001_absent_guardsmen.sql','AUTH-SCHEMA.sql','PRODUCT-SCHEMA.sql','SECURITY-SCHEMA.sql','BETA-SCHEMA.sql','ROUNDS-SCHEMA.sql','GUEST-SCHEMA.sql','AUTOPILOT-SCHEMA.sql','REWARDS-SCHEMA.sql','EARNING-SCHEMA.sql','REDEMPTION-SCHEMA.sql','PROFILE-EXPERIENCE-SCHEMA.sql','ADMIN-EXPERIENCE-SCHEMA.sql'])await db.exec(readFileSync(file,'utf8').replace(/--> statement-breakpoint/g,'').replace(/^--.*$/gm,'').replace(/\n/g,' '));
+ for(const file of ['drizzle/0000_tiny_shape.sql','drizzle/0001_absent_guardsmen.sql','AUTH-SCHEMA.sql','PRODUCT-SCHEMA.sql','SECURITY-SCHEMA.sql','BETA-SCHEMA.sql','ROUNDS-SCHEMA.sql','GUEST-SCHEMA.sql','AUTOPILOT-SCHEMA.sql','REWARDS-SCHEMA.sql','EARNING-SCHEMA.sql','REDEMPTION-SCHEMA.sql','PROFILE-EXPERIENCE-SCHEMA.sql','ADMIN-EXPERIENCE-SCHEMA.sql', 'WORKFLOW-SCHEMA.sql'])await db.exec(readFileSync(file,'utf8').replace(/--> statement-breakpoint/g,'').replace(/^--.*$/gm,'').replace(/\n/g,' '));
  const run=(sql,...v)=>db.prepare(sql).bind(...v).run(),one=(sql,...v)=>db.prepare(sql).bind(...v).first();
  await run("INSERT INTO settings(id,enabled,cashtag) VALUES('main',1,'$UnitTest')");
  const cookies={};

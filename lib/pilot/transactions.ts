@@ -171,6 +171,10 @@ export async function verifyPayment(db: DB, m: Row, b: Row, atomic: Atomic) {
       ),
       stmt(db, "UPDATE orders SET status='paid' WHERE id=?", p.order_id),
     );
+  if(b.effectiveAt!==undefined){
+    const effective=int(b.effectiveAt,0,Date.now()+60000);
+    statements.push(stmt(db,'INSERT INTO payment_receipt_times(payment_id,effective_at,known) VALUES(?,?,1)',p.id,effective));
+  }
   statements.push(
     stmt(
       db,

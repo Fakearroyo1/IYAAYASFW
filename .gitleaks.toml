@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+# Public baseline Git commit, misclassified after prose containing "key".
+# Require BOTH the exact nonsecret value and one of these evidence files.
+# This does not exclude documents, other commit IDs, or other secret rules.
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Reviewed public baseline commit in identity evidence"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^docs/(FEATURE-REGISTER|IDENTITY-ACCEPTANCE-BASELINE)\.csv$''']
+regexes = ['''^3357cad7bfe8e7ae50475718e8542e9fba83933f$''']

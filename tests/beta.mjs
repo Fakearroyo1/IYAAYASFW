@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -22,14 +23,10 @@ fs.writeFileSync(
   out + "/owner.mjs",
   "export const OWNER_EMAIL='owner@example.test';",
 );
-const { mutate, readState, identity } = await import(out + "/service.mjs");
-const { mutateCommunity, communityPage } = await import(out + "/community.mjs");
-const { transactionDetail, correctionAmounts } = await import(
-  out + "/transactions.mjs"
-);
-const { adminSummary, productPerformance, historyPage } = await import(
-  out + "/history.mjs"
-);
+const { mutate, readState, identity } = await import(pathToFileURL(out + "/service.mjs").href);
+const { mutateCommunity, communityPage } = await import(pathToFileURL(out + "/community.mjs").href);
+const { transactionDetail, correctionAmounts } = await import(pathToFileURL(out + "/transactions.mjs").href);
+const { adminSummary, productPerformance, historyPage } = await import(pathToFileURL(out + "/history.mjs").href);
 const sqlite = new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for (const f of fs
@@ -49,7 +46,7 @@ for (const f of [
     "EARNING-SCHEMA.sql",
     "REDEMPTION-SCHEMA.sql",
     "PROFILE-EXPERIENCE-SCHEMA.sql",
-    "ADMIN-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql", "WORKFLOW-SCHEMA.sql",
 ])
   sqlite.exec(fs.readFileSync(f, "utf8"));
 class Statement {
@@ -755,7 +752,7 @@ check(
   "Voided purchases cannot sustain a verified review",
 );
 // CSV includes effective values plus untouched original values and safe text.
-const { exportRows, toCsv } = await import(out + "/export.mjs");
+const { exportRows, toCsv } = await import(pathToFileURL(out + "/export.mjs").href);
 const corrected = await transactionDetail(db, taxSale.id);
 const reportData = {
   products: [],

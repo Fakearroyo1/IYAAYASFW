@@ -1,12 +1,14 @@
 # IYAAYASFW Supply
 
+Identity rollout candidate: see [current release evidence](docs/IDENTITY-RELEASE-2026-09-21.md), [team test instructions](TEAM-TEST-CHECKLIST.md), and [owner recovery](OWNER-RECOVERY-RUNBOOK.md). New methods default off. The September 21 work order supersedes the historical discovery-only work order; real account/device gates remain explicit in the release evidence.
+
 A member store for snack bar purchases and unit gear, with durable orders, stock and price management, pickup tracking, and CSV exports. Production is hosted on the existing Cloudflare Worker at iyaayasfw.com; `main` triggers Workers Builds.
 
 ## Member access and passwords
 
 - Manage → Members approves an email and grants Snack bar, Unit gear, or both. Existing members default to both without rewriting their records. Gear-only accounts do not receive snack catalog data and cannot purchase snacks through the API.
 - Administrators can manage both shops. The owner grants administrator roles and manages other administrators. The owner cannot be disabled or demoted.
-- New members use **First Time** on the login page. Only an active approved email without a password can proceed. An administrator issues a private setup code from Members and shares it with the intended member. Codes expire after seven days, are stored only as hashes, and are consumed when a password is created. A new code invalidates the previous one. Knowing a whitelisted email alone cannot claim the account.
+- With the deployed identity system enabled, active whitelisted members register through a private member-bound invitation or an explicit Google preauthorization. Preauthorized Google members choose Google on normal sign-in and use the exact approved account. Manage these in **Members & access → Sign-in, invitations & CSV**; see [member onboarding](docs/MEMBER-IMPORT-AND-INVITATIONS.md). New legacy First Time codes are disabled; previously issued codes retain their original expiry/redemption. Knowing a roster email alone cannot claim the account.
 - My account → Change password requires the current password. The current device stays signed in; other sessions are revoked.
 - Forgot password creates one pending in-app request per active account. Administrators review requests in Members, issue a private, single-use recovery code, and the request is resolved automatically. Requests do not themselves grant access. An administrator can dismiss a request without changing a password.
 - Passwords use scrypt (N=16384, r=8, p=5), 15–128 characters, and are never stored in plaintext or returned. Setup codes and passwords are absent from audit logs.

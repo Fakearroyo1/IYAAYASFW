@@ -1,0 +1,236 @@
+# Identity release candidate — September 21, 2026
+
+**Deployed for every active whitelisted member, including later additions. Full acceptance testing remains incomplete.** Target: 08:00 America/New_York. The owner authorized implementation, Cloudflare edits, protected backup/recovery and specific live tests on Jake's existing account, plus explicit Access mappings for Jake and Mason. No team messages or bulk invitations are authorized. Mason is unavailable; the owner deferred his test, so his mapping remains pending and the established administration path stays available.
+
+Deployed code: `6fdecad1b013ce312e1b7489f6db5fb9b405c9df`, Worker version
+`58627b35-57af-4bec-adff-d951a559a557`, at 20:10 UTC (16:10 Eastern).
+[PR #18](https://github.com/Fakearroyo1/IYAAYASFW/pull/18) at `14118f9` is merged into the
+approved release branch and is an ancestor of this deployed commit. [PR #17](https://github.com/Fakearroyo1/IYAAYASFW/pull/17)
+remains draft. [Exact-candidate Linux CI](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35648867576)
+passed the full application workflow, dependency audit and complete-history secret scan.
+Evidence-only follow-up commits do not change the deployed Worker.
+
+## Readiness
+
+| Area | Evidence status | Remaining gate |
+|---|---|---|
+| Google | REAL LOGIN TESTED / FRESH VERIFICATION BLOCKED | Linking and ordinary login succeeded on the original member. Real account-change verification failed; Google branding rejection prevents Session age claims. The candidate disables Google for fresh account changes and retains password/passkey/Microsoft alternatives. Domain ownership is owner-reported verified; branding re-review remains pending. |
+| Personal Microsoft | REAL TESTED / DEPLOYED VERIFIED | After the client-ID correction, linking and login succeeded. Subsequent aggregate live records confirm one completed Microsoft fresh account-change verification on the original member. Organizational accounts remain rejected. |
+| Passkeys | PARTIAL / REAL IPHONE ENROLLMENT, LOGIN AND CANCEL/RETRY | Owner reported enrollment and sign-in after logout; live records confirm both on the existing owner member. Owner also confirmed cancellation left the browser signed out and retry worked. Android is unavailable; Android/Chrome and desktop ceremonies remain unverified. |
+| Administrator host | OWNER-CONFIRMED ROUTING / PRIOR REAL MFA CANCELLATION DENIAL | Owner previously canceled the factor prompt and was denied. The owner now confirms the admin center works under the proper subdomain. Expiration and Mason mapping/test remain pending. |
+| Backup recovery | REAL TESTED / stale-access canaries | Full archive restore and closed-access stale snapshot rehearsal passed; refresh protected snapshot if data changes |
+| Owner emergency account control | REAL TESTED / owner-attested | Owner reported account access good after the independent recovery rehearsal request; private authentication was not observed by the agent |
+| Legacy password and commerce | Locally tested | Final candidate CI and deployed owner smoke |
+| Sixty concurrent shared-NAT logins | MOCK-ONLY / compiled runtime passed | Final CI and deployed smoke; no production load test |
+| Member feature availability | LIVE | Every active whitelisted member, including new manual/CSV additions; no second beta allowlist or deployment unlock |
+| Full acceptance and administrator migration | INCOMPLETE | Pending real device/admin/commerce tests and Mason mapping; these are not claimed passed by member enablement |
+
+New methods use maintained openid-client 6.8.8 and SimpleWebAuthn server 14.0.2/browser 14.0.0. Provider subjects and passkey IDs bind to existing immutable member IDs. Conservative Google bootstrap requires a separately granted authoritative address; Microsoft email bootstrap remains disabled. Explicit Microsoft linking does not assume an email match. Credentials, invites, actions and handoffs are one-use/current-state checked at transactional commit.
+
+## Implemented controls
+
+Additive identity tables reside in the established D1. No financial, inventory, rewards, privacy or guest-gear rules were changed. Existing member sessions retain seven-day idle/thirty-day absolute bounds; admins retain thirty-minute idle/twelve-hour absolute bounds and are capped by Access verification. A password change revokes sessions derived from new identity methods, including the changing identity session, as a security containment effect; valid legacy password sessions retain their prior behavior where safe.
+
+All methods default off. `IDENTITY_ROLLOUT=owner-smoke` restricts new credential flows to Jake. The current candidate moves Jake and mapped administrators to the admin hostname and removes their apex administrator authority; revoking a mapping cannot restore that authority. Only unmapped administrators retain the existing MFA-protected route during rehearsal. `all-approved` completes separation for every administrator and enables eligibility for all approved members. Both administrators need verified mappings before that cutover. An incoming email never provisions a mapping. Only Jake receives new identity-grant/review authority.
+
+Invites default to 24 hours, allow 15-minute in-person or up to seven-day explicit expiry, and supersede pending invites of the same purpose. Bootstrap grants expire after 90 days and cannot be renewed by a repeated import. Fresh existing-method proof and final grants last five minutes; transactions ten minutes; handoffs sixty seconds. The per-method switches are checked again at final handoff redemption.
+
+New metadata retention: unmatched details 30 days; expired ceremony secrets within 24 hours; ended identity sessions 90 days; identity audit 365 days, preserving incident holds. Cleanup is bounded and does not delete legacy history or business records. Invocation URL logging is disabled in the candidate to keep OAuth codes out of request logs.
+
+## Live infrastructure evidence
+
+The unused Pages project and its 87 deployments were permanently deleted after explicit owner approval. Its deployment inventory was retained privately. The canonical Pages hostname stopped resolving. Main and gear automatic Workers Builds deployments were paused with a failing deploy command; the previous commands are `pnpm run deploy` and `pnpm run deploy:gear`. Do not restore automatic deployment until the reviewed release process is complete.
+
+A separate Access application protects the full administrator hostname. It uses a reusable explicit-email policy for the two existing administrators, Google Access, security keys/biometrics, a thirty-minute independent MFA session and no bypass/service-auth decision. Configuration was read back. This does not prove real factor denial. The old apex Access application remains intact. The additive identity schema is deployed, has 14 member-state records and passes the remote foreign-key check. Jake's explicitly authorized issuer/subject mapping was verified against the Access directory and saved; he alone has identity-owner authority.
+
+The four approved main/auth/register/admin domains were read back after deployment. At 04:16 UTC, live checks passed: default login redirects to the auth-host chooser with a Secure/HttpOnly/host-only destination cookie; explicit password fallback and registration return 200; anonymous member data returns 401; auth-host store API returns 404; anonymous admin access redirects to Cloudflare Access; gear remains 200. All 24 bindings, including encrypted provider-secret bindings and the corrected Microsoft client ID, matched the pre-deployment snapshot. Observability and disabled workers.dev/previews were unchanged. The rollout variable remains `owner-smoke`. These route checks do not by themselves prove authenticated user flows.
+
+## Protected recovery evidence
+
+At 02:31 UTC, consecutive full D1 exports had identical application schema and all table/view digests. The encrypted backup covers 88 application tables and 10 views; Cloudflare's reserved `_cf_KV` system table is outside application export scope. The encrypted R2 backup covers all 21 objects (4,013,317 bytes) with metadata and checksums. Complete before/after R2 inventories matched.
+
+At 02:37 UTC, independent key retrieval and isolated memory restore passed. Every table/view digest, immutable member/balance state, schema integrity and foreign key check matched. All 21 image references resolved. Applying the identity schema twice preserved existing rows and views. An isolated containment simulation revoked pending setup/recovery/session authority. A fresh database archive from 03:22 UTC repeated those checks before migration; the R2 inventory still matched all 21 encrypted objects. Wrangler initially needed its OAuth refreshed with an account-status read; the backup retry then succeeded. No production database was restored by these drills. See the owner runbook for stale-backup revocation handling and real-disaster cutover restrictions.
+
+At 03:39 UTC, a post-deployment encrypted database snapshot and memory restore passed with 102 application tables, 10 views and all 21 image references. All preexisting business tables and views matched the 03:22 pre-migration snapshot exactly; only operational session/rate-limit/access-cache/guard tables were excluded from that cross-snapshot comparison. A prior attempt during owner sign-in activity correctly refused inconsistent consecutive exports.
+
+At 03:50 UTC, the same protected archive passed a stale-identity recovery rehearsal. Synthetic stale OAuth/passkey credentials, an administrator principal, setup/recovery codes, invitation, session, ceremony and handoff were added only to the restored in-memory copy. The unknown-revocation-evidence path closed all restored member access, revoked methods/principals, invalidated sessions and pending authority, and denied cutover pending independent owner verification. Original member fields except the intentional active-access flag, passwords, business tables/views, privacy and history matched. The existing accounting cache revision advanced by exactly the number of member updates. This is an actual archive restore with synthetic stale-access canaries, not a production restore or a real compromise simulation. The rehearsal refuses disk-backed databases and has no remote-write path.
+
+At 04:13 UTC, a new encrypted database backup captured the real linked Google, Microsoft and passkey methods; consecutive exports matched. At 04:14 UTC, isolated restore, original business-state reconciliation and the stale-identity rehearsal passed again for all 102 tables, 10 views and 21 image references. A complete fresh R2 inventory still matched all 21 protected objects. No production records were changed by the restore rehearsal.
+
+## Candidate validation
+
+- Typecheck, main build and gear dry build passed.
+- Identity state/import: 62 checks, including simultaneous invite completion/handoff redemption and sixty-row preview; signed synthetic OIDC/WebAuthn: 65, including safe rejection diagnostics and usable fresh-method filtering; compiled Worker host/CSRF/admin/fresh-addition flow: 71, including direct auth-host navigation, secure destination binding, safe return paths, explicit password fallback and signed-in bypass; rollout/method-disable/last-method races: 15; setup/recovery containment races: 24.
+- Existing suites passed locally: pilot 74; beta 63; rounds 1–2 48, rounds 3–4 61, rounds 5–7 86; earning 77; redemptions; profile experience; admin experience 80; payment handoff; rewards UI 30; UI contracts 28; bounded HTTP 8; experience HTTP 104; rounds HTTP 38; roadmap HTTP 61; authentication 96; security 62; hardening 589; image parsers 4; backup crypto 4.
+- Some esbuild-based tests required execution outside the Windows sandbox after parent-directory reads were denied. Assertions and production code were not weakened.
+- With sixty distinct synthetic members and six requests in flight behind one IP, the former 40/IP limit accepted 40 and rejected 20. After raising the IP limit to 180/15 minutes, the full sixty-concurrent test accepted all 60 with correct member binding; per-account 10/15-minute rejection remained effective. Candidate local p50 7,827 ms, p95/max 7,829 ms; the full check including subsequent abuse attempts took 12,576 ms. Initial Windows transport failures were resolved by consuming response bodies and performing database verification after the timed request burst. The same correctness assertions remain. No production password-hashing change was made. These measurements do not establish a production SLO.
+
+All protocol tests above use synthetic providers/authenticators and isolated storage. They do not establish real provider/device/MFA compatibility. No production/provider load test was performed.
+
+The compiled UI was checked at desktop and 390-pixel phone widths in a local read-only preview. All three methods and password fallback were visible; no horizontal overflow; keyboard focus reached Google with a visible outline. This does not replace the real-device acceptance gate. See [all 65 acceptance cases](IDENTITY-ACCEPTANCE-2026-09-21.csv) and the added phase columns in [the feature register](FEATURE-REGISTER.csv) for partial coverage.
+
+Owner smoke found that fresh verification showed unlinked methods, and the store did not make the linked-method page easy to find. The deployed follow-up limits fresh choices to active credentials that predate the flow and match the current provider client/RP, rejects unlinked starts on the server, and adds a visible store-wide Linked methods shortcut. The shortcut was checked in the compiled store at 390-pixel width with no horizontal overflow. Consumed OIDC callback failures record only fixed error categories and a fresh-proof flag; raw provider exceptions remain excluded. The original provider failure has not yet been reproduced with the corrected flow. The Google discovery metadata was checked against the official endpoint and still declares the authorization-response issuer parameter; that check was retained. Live anonymous route/cookie/Access/gear checks passed again after deployment; encrypted secret bindings and owner-smoke settings were read back unchanged.
+
+At 04:05 UTC, the owner-approved Microsoft Application client-ID correction was applied through Cloudflare's complete binding list with documented inheritance. Readback confirmed all 23 other bindings and observability unchanged, with the resulting version deployed at 100%. No secret value was read or replaced. The owner then completed fresh linking and login after logout; aggregate live records independently confirm both on the original member.
+
+The deployed navigation follow-up sends default member login straight to the auth-host chooser. It first establishes the member-host destination cookie so the final handoff remains browser-bound. Users choose Passkey once on the auth host; the explicit existing-password fallback remains on the member host and preserves safe product return paths. Local build, typecheck, 71 compiled identity checks and 96 legacy authentication checks passed, followed by the complete Linux CI. A real browser followed the deployed redirect, displayed all three enabled peer choices, opened the password fallback and returned to the chooser. The live 390-pixel layout had no horizontal overflow. No provider ceremony was initiated by that visual check.
+
+The owner reported another successful Google/Microsoft check when asked about fresh reauthentication, but the corresponding live records showed ordinary login flows. Those additional logins are confirmed; provider-based fresh proof remains pending until the distinct account-change flow is observed. No unsupported freshness claim has been promoted to a release gate.
+
+## Branding, Google fresh proof and administrator workspace follow-up
+
+The owner subsequently reproduced Google's account-change failure. Fixed-category audit records show two failed fresh callbacks, while aggregate flow records confirm one completed Microsoft fresh verification. The Google console rejected branding because the homepage was private, ownership was unverified, privacy content was insufficient and the application name/purpose were absent. The owner then reported domain ownership verification complete. Public `/about` and `/privacy` pages address the remaining website issues without exposing the store or roster; Google console URL/name corrections and re-review remain owner actions.
+
+Google requires verified-app Session age claims and an explicit request for `auth_time`. The candidate requests that claim, preserves signature/issuer/audience/nonce and five-minute checks, and keeps `IDENTITY_GOOGLE_FRESH_ENABLED=false` while the provider prerequisite is blocked. The flag is enforced at choice, callback and final redemption. Ordinary Google login remains enabled for the owner. No token issuance time or account chooser is accepted as proof of recent authentication.
+
+The candidate integrates **Accounts & sign-in** into the admin dashboard with sections for members/invitations, pending login review and CSV upload/preview. The owner can populate a CSV template with current member IDs. Templates grant nothing; imports and identity mutations retain independent member verification, fresh owner proof, explicit confirmation and transactional guards. Financial member merging remains excluded. The owner/mapped-admin Manage path now stays on the administrator hostname; Mason's unverified migration remains deferred.
+
+Follow-up local validation passed: typecheck/build; 62 identity/import checks, 74 signed synthetic protocol checks, 17 rollout/race checks, 16 release-gate checks, 87 compiled identity HTTP checks, 80 admin experience checks, 28 UI checks and 96 legacy authentication checks. The compiled HTTP checks exercise both all-approved and owner-smoke navigation/authority. A loopback-only compiled preview with synthetic members verified member-bound invitations, pending-request review, template creation and unchanged-row CSV preview. The workspace and public pages were checked at desktop and 390-pixel widths; the import table scrolls within its container without page overflow. No invitation, grant or import was applied to production by these checks.
+
+At 04:55 UTC, a refreshed encrypted snapshot again captured 102 tables and 10 views with matching consecutive exports. Cross-snapshot verification caught two time-dependent operational-task views: reminder age/severity changed with the clock, while stored records were unchanged. The backup verifier now records a common evaluation time, delegates date formatting to SQLite and compares both restored snapshots at that time. It first validates each archive against its original manifest; no table or view is excluded from reconciliation. A synthetic time-boundary test also proves a real balance change remains detectable. At 05:00 UTC, the full restore, all original business tables/views, 21 images and stale-access rehearsal passed. Production was not restored or modified.
+
+At 05:09 UTC, candidate `370a9c4` was deployed at 100% after full Linux CI run 61 and the checked manual release dry run. Deployment `32dacaee-5bba-4af1-9704-028fd5b6ad72` uses Worker version `61f66975-bf81-4b2a-829d-1406763798aa`. Readback preserved all 24 previous bindings and observability; the only new binding is `IDENTITY_GOOGLE_FRESH_ENABLED=false`. All four main hosts and the private storage bindings remain correct; workers.dev/previews and automatic publishing remain disabled/held. Live `/about` and `/privacy` return 200 with the exact app name and policy content; root still redirects to sign-in, default login opens auth, password fallback returns 200, member API returns 401 anonymously, auth-host store API returns 404, admin entry redirects to Access, and gear returns 200. Owner confirmation of the authenticated Manage route/suite and Google branding resubmission was requested. Roster-wide release remains gated.
+
+## Public homepage and privacy clarification
+
+The owner confirms the admin center is working under the correct subdomain. Google branding still showed the three page findings immediately after saving `/about`; that is not evidence of a new completed review. Direct anonymous HTTP checks found `/about` and `/privacy` already public, including a diagnostic Googlebot user-agent request, while root still redirected to login. The diagnostic request does not prove access from Google's actual verification service.
+
+Candidate `4302a22` now renders app information at the anonymous root and preserves the store for authenticated sessions. Private store APIs remain denied anonymously. The exact app name, purpose, reason for Google identity access and privacy link are visible without JavaScript or sign-in. The policy explicitly covers Google data access, use, storage, sharing, security, retention, revocation and owner-reviewed deletion, using the existing store support address. Login, linked-method and store screens link to it. Desktop and phone-sized compiled previews had no page overflow or console warnings/errors.
+
+The initial CI run caught the legacy test's old root-redirect expectation; it was updated to verify the public landing while preserving private-data/image denial assertions. Final CI run 64 passed, including 93 compiled identity checks and 96 legacy authentication checks. At 05:30 UTC deployment `7e1e4bfc-c37c-43ad-b6ad-e7a14b8726b7` reached 100%. All 25 bindings and observability matched the pre-release snapshot. Live root, `/about` and `/privacy` return 200 without redirects/challenges; private member API is 401, auth-host store API 404, administrator entry still redirects to Access, and login still opens the auth-host chooser. Existing-password fallback and gear remain available. No schema or member records were changed for this update.
+
+For Google re-review, retain the exact app name **IYAAYASFW member login**, homepage `https://iyaayasfw.com/about` and privacy URL `https://iyaayasfw.com/privacy`. Select the fixed-issues re-verification path and, if Google sent a verification email, reply there to identify the updated pages. Website checks do not establish provider approval. Google fresh verification stays disabled until approval, Session age claims and a real account-change test succeed.
+
+## Landing design follow-up
+
+The owner requested a prominent sign-in button and an elegant landing page consistent with the store. Candidate `820067b` uses the existing system typography, theme colors and appearance control, a large primary sign-in link, concise member benefits and secondary app/privacy information below. The primary action is visible without scrolling at 390- and 320-pixel viewport widths; keyboard focus is visible and neither width has horizontal overflow. Desktop light/dark themes and supporting-page navigation were visually checked. This is a presentation change with no authentication logic changes.
+
+Full CI run 68 and the manual dry run passed. Deployment `22bb1a95-83bb-4ca2-ad77-1ab15b926e6e` reached 100% at 09:40 UTC. All 25 bindings and observability matched readback. Live root and `/about` show the new landing and sign-in link; `/privacy` remains public, login redirects to the auth chooser, private store data remains 401, auth-host store APIs remain 404 and administrator entry still redirects to Access. A live browser confirmed the rendered design with no console warnings/errors. Existing rollout gates remain in place.
+
+## PR #18 integration and whitelist-controlled member deployment
+
+The owner approved deployment of PR #18 at `14118f9` and requested that the small
+member group test the complete deployed system, with no additional membership unlocks.
+That PR passed Linux CI run 35596662568 and is merged into the approved release branch.
+Its CSV importer and private QR/link/code components are retained.
+
+The follow-up combines permissions and owner identity tools in Members & access,
+returns fresh owner approvals there, and replaces the manual-add setup-code prompt
+with the same member's invitation tools. New setup-code issuance is denied server-side
+when identity is enabled; existing codes, recovery, sessions and records are preserved.
+
+The `member-beta` stage makes every active whitelisted member eligible, including
+members added later by manual creation or CSV. There is no second beta list or additional
+release-setting change needed for those members. Registration still requires member-bound
+authority, active whitelist status and current-state checks. Unknown provider identities
+cannot create membership; removing whitelist access denies an in-flight enrollment/login.
+Full acceptance evidence and administrator mapping requirements remain separate and unchanged.
+No bulk invitations, production imports or new database migration accompany this deployment.
+
+At 20:03 UTC a fresh encrypted database backup captured 102 tables and 10 views with
+matching consecutive exports. The isolated restore verified every table/view, all 21
+stored images and stale-identity denial canaries. The protected local key worked;
+separate password-manager custody/retrieval was previously owner-confirmed. This snapshot
+represents the current database, including legitimate intervening changes, and was not
+asserted identical to the earlier morning database. Production was not restored.
+
+Real evidence retained: Google and Microsoft linking/login; Microsoft fresh proof;
+iPhone enrollment/login/cancel/retry; owner admin MFA cancellation denial; owner-attested
+independent recovery. Android, desktop, Mason mapping/sign-in, real admin session-expiry
+denial and deployed commerce acceptance remain pending. Beta authorization is not proof
+that these tests passed. Google fresh account-change verification remains disabled.
+
+Final local validation passed: typecheck/build, 26 rollout/race checks, 27 release-gate
+checks and 116 compiled identity HTTP checks. Earlier unchanged-feature checks passed
+62 identity, 132 importer, 74 synthetic protocol, 80 admin experience, 28 UI-contract,
+24 containment and 96 legacy authentication checks. Final Linux CI passed all suites
+on the exact deployed commit, including security, checkout/accounting and backup checks.
+
+A compiled isolated browser test created a synthetic member through Add member and
+confirmed immediate selection in invitation tools, without a First Time setup dialog.
+Per-member navigation and both CSV modes worked within Members & access at 390-pixel
+width, without horizontal overflow or browser console errors. These were synthetic
+local records, not production account changes or real provider/device evidence.
+
+The checked release configuration checksum was
+`df7addaaff6c33783da9fe3142a401eeebd28a7cadac0755d2d42fa5256af861`.
+Deployment `33b23886-4eb5-4379-b712-b49f4e5bac71` reached 100% at
+2026-09-21T20:10:27Z with Worker version `58627b35-57af-4bec-adff-d951a559a557`.
+The version tag exactly matches the deployed commit. Readback retained all 25 bindings;
+the only value change was `IDENTITY_ROLLOUT: owner-smoke → member-beta`. Observability,
+all four main hosts, D1/R2 and secret bindings matched; main/gear workers.dev and preview
+URLs remained disabled. Google fresh proof and automatic bootstrap remain disabled.
+No database migration or production import/invitation issuance was performed.
+
+At 20:11 UTC all 12 live route checks passed: public root/about/privacy, auth-host login
+entry and chooser, existing-password fallback, anonymous store API denial, auth-host API
+isolation, invitation entry, administrator Access redirect, gear and public identity
+context. The context reports the deployed member stage and all three enabled methods,
+while anonymous requests receive no member identity or registration authority.
+
+At 20:12 UTC the encrypted post-deployment snapshot and isolated restore also passed.
+Comparing all 102 tables and 10 views against the pre-release archive at the same clock
+time found changes only in `auth_limits` and `identity_flows`, consistent with the
+live sign-in route probes. Members, credentials, grants, financial history, all other
+stored records and all 21 images matched. All 18 previously unexpired sessions remained
+present with the same member and creation time. Production was not restored.
+
+Members can sign in with their existing password, open **Linked methods**, and verify
+that method to add Google, Personal Microsoft or a passkey. The owner uses
+**Members & access → Sign-in, invitations & CSV** for imports and private invitations.
+New active whitelist entries can enroll immediately through their invitation; no second
+rollout list or deployment change is required. Google fresh proof, Android/desktop,
+Mason migration, real admin expiry and deployed commerce acceptance retain their
+recorded pending/provider-blocked status.
+
+## Google preauthorization activated for imported members
+
+The owner explicitly requested live testing of Google automatic first association and
+application to the newly imported accounts. Deployment `1bf62b43-27bb-4eba-ac14-d4e45828e609`
+reached 100% at 2026-09-21T20:49:48Z, running commit
+`79102ba79f64ff4dc230a8dd424d2ec5103eec09` and Worker version
+`fac5a1d1-e61b-4bdf-9568-3b65c338c976`. The version tag matches that exact commit.
+Prepared configuration SHA-256:
+`62118367892296f18d9f793d7d557a02918f2488e04cf7153a2784400d75c72d`.
+
+Readback retained all 25 bindings, original D1/R2, secret bindings, observability and
+all four main custom domains. The only setting change was
+`IDENTITY_GOOGLE_BOOTSTRAP_ENABLED: false → true`. Main/gear workers.dev and preview
+URLs remain disabled. Google fresh account-change proof remains disabled separately.
+The checked release preparer now preserves the approved live bootstrap setting on
+later releases and requires explicit owner evidence for an override. All other
+member-beta and full-release checks remain intact.
+
+The read-only import audit found 57 active imported members: 45 with explicit,
+pending, unexpired, epoch-current Google preauthorizations, all for Gmail addresses;
+12 without a Google grant. The same counts and grants remained after deployment.
+No reimport, grant renewal, credential fabrication or migration was performed.
+Those 45 members can choose Google on normal sign-in and use the exact preauthorized
+account. The remaining 12 need a private invitation or an explicitly supplied Google
+address. The active whitelist remains authoritative; a roster email alone does not
+claim membership. Google-authoritative verified Gmail/Workspace proof, immutable
+provider subject, one-use grants and transactional state checks remain required.
+
+Local validation passed typecheck/build, 37 manual-release checks, 143 importer checks
+and 116 compiled identity HTTP checks. New tests cover staged imports becoming usable
+without reimport, exact existing member binding, consumed grants, and denial for an
+unknown identity, an unpreauthorized roster email, or a disabled member. Exact-commit
+Linux CI run [74](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/35653004671)
+passed the complete application suite, dependency audit and secret scan. The release
+dry run passed before deployment. All 12 live route checks passed at 20:50 UTC,
+including public pages, auth entry, password fallback, anonymous API denial, separate
+host isolation, private invitation entry, administrator Access and gear.
+
+Fresh encrypted pre/post-deployment backups at 20:43/20:51 UTC each captured 102 tables
+and 10 views and passed isolated restore, all 21 image checks and stale-identity
+canaries. Comparing all 112 database objects at the same clock found changes only in
+`auth_limits` and `identity_flows`, consistent with route probes. Member records,
+credentials, grants, financial history and other stored records matched. All 19
+previously unexpired sessions retained their member and creation time. The existing
+protected key was used; password-manager custody/retrieval was previously confirmed
+by the owner. Production was not restored.
+
+This establishes deployment and synthetic coverage. A real first sign-in using one
+of the imported Google preauthorizations is now available for member testing; no
+such real-provider result is claimed by this release. Other pending device/admin/
+commerce acceptance items above retain their recorded status.

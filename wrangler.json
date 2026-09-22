@@ -22,7 +22,21 @@
       "bucket_name": "iyaayasfw-supply-images"
     }
   ],
-  "vars": {},
+  "vars": {
+    "IDENTITY_ENABLED": "false",
+    "IDENTITY_ROLLOUT": "owner-smoke",
+    "IDENTITY_GOOGLE_ENABLED": "false",
+    "IDENTITY_GOOGLE_FRESH_ENABLED": "false",
+    "IDENTITY_MICROSOFT_ENABLED": "false",
+    "IDENTITY_PASSKEY_ENABLED": "false",
+    "IDENTITY_GOOGLE_BOOTSTRAP_ENABLED": "false",
+    "IDENTITY_BASE_DOMAIN": "iyaayasfw.com",
+    "IDENTITY_OWNER_MEMBER_ID": "",
+    "IDENTITY_ADMIN_ACCESS_AUD": "",
+    "IDENTITY_REQUEST_RETENTION_DAYS": "30",
+    "IDENTITY_SESSION_RETENTION_DAYS": "90",
+    "IDENTITY_AUDIT_RETENTION_DAYS": "365"
+  },
   "routes": [
     {
       "pattern": "iyaayasfw.com",
@@ -36,7 +50,7 @@
     "logs": {
       "enabled": true,
       "head_sampling_rate": 1,
-      "invocation_logs": true,
+      "invocation_logs": false,
       "persist": true
     },
     "traces": {
