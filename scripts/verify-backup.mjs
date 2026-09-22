@@ -40,6 +40,7 @@ const db=restoreMemory(bundle.sql);try{
   if(normalize(latest.objects)!==normalize(assets.objects))throw Error('R2 changed during backup; repeat with a consistent inventory.');
   const refs=new Set();
   const productPaths=db.prepare("SELECT image FROM products WHERE image IS NOT NULL UNION SELECT value image FROM product_details,json_each(product_details.images)").all();
+  if(before.objects.purchase_receipts)productPaths.push(...db.prepare('SELECT image FROM purchase_receipts WHERE image IS NOT NULL').all());
   for(const {image} of productPaths){if(image.startsWith('/api/product-images?id='))refs.add('products/'+new URL(image,'https://restore.invalid').searchParams.get('id'));}
   if(before.objects.profile_images)for(const {object_key} of db.prepare('SELECT object_key FROM profile_images').all())refs.add(object_key);
   for(const key of refs)if(!keys.has(key))throw Error('A database image reference is missing from the private asset backup.');
@@ -55,7 +56,9 @@ const db=restoreMemory(bundle.sql);try{
   if(target){db.prepare('UPDATE members SET active=0 WHERE id=?').run(target.id);db.prepare('UPDATE members SET active=1 WHERE id=?').run(target.id);if(db.prepare('SELECT count(*) n FROM auth_setup WHERE member_id=?').get(target.id).n||db.prepare('SELECT count(*) n FROM auth_recovery WHERE member_id=?').get(target.id).n||db.prepare('SELECT count(*) n FROM auth_sessions WHERE member_id=?').get(target.id).n)throw Error('Restored containment left pending access.');}
   migration='repeat application preserves all prior tables/views; isolated containment revokes pending access';
  }
+ let workflowMigration='not requested';
+ if(args.includes('--rehearse-workflow')){const baseline=databaseManifest(db,{now:evaluationTime});const schema=readFileSync(new URL('../WORKFLOW-SCHEMA.sql',import.meta.url),'utf8');db.exec(schema);db.exec(schema);const after=databaseManifest(db,{now:evaluationTime});if(compareManifests(baseline,after,{schema:false}).length)throw Error('Workflow migration changed original records.');if(db.prepare('PRAGMA foreign_key_check').all().length)throw Error('Workflow migration foreign keys failed.');workflowMigration='passed: repeated additive migration preserves all original tables and views';}
  const staleIdentity=args.includes('--rehearse-stale-identity')?rehearseStaleIdentity(db):'not requested';
- const result={isolatedRestore:'passed',environment:'memory only, no server or remote writes',tables:Object.values(before.objects).filter(x=>x.type==='table').length,views:Object.values(before.objects).filter(x=>x.type==='view').length,allTableAndViewDigests:'matched',immutableMemberAndBalanceState:'matched',priorBusinessState,schemaAndForeignKeys:'passed',assets:assetCount,imageReferences:referenceCount,migration,staleIdentity,verifiedAt:new Date().toISOString()};
+ const result={isolatedRestore:'passed',environment:'memory only, no server or remote writes',tables:Object.values(before.objects).filter(x=>x.type==='table').length,views:Object.values(before.objects).filter(x=>x.type==='view').length,allTableAndViewDigests:'matched',immutableMemberAndBalanceState:'matched',priorBusinessState,schemaAndForeignKeys:'passed',assets:assetCount,imageReferences:referenceCount,migration,workflowMigration,staleIdentity,verifiedAt:new Date().toISOString()};
  writeFileSync(args[0]+'.verification.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{db.close()}

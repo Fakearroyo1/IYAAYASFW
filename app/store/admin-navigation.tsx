@@ -12,12 +12,5 @@ export const adminGroups = [
 
 export default function AdminNavigation({value,onChange}:{value:string;onChange:(value:string)=>void}) {
   const groups=adminGroups;
-  return <>
-    <label className="management-select field"><span>Management section</span><NativeSelect value={value} onChange={e=>onChange(e.target.value)}>
-      {groups.map(group=><optgroup label={group.title} key={group.title}>{group.items.map(([id,label])=><option key={id} value={id}>{label}</option>)}</optgroup>)}
-    </NativeSelect></label>
-    <nav className="management-nav" aria-label="Store management">
-      {groups.map(group=><div className="management-group" key={group.title}><span>{group.title}</span><div>{group.items.map(([id,label])=><button type="button" key={id} aria-current={value===id?"page":undefined} onClick={()=>onChange(id)}>{label}</button>)}</div></div>)}
-    </nav>
-  </>;
+  return <nav className="management-nav wf-admin-nav" aria-label="Store management">{[["overview","Overview"],["inventory","Products"],["planning","Restock"],["money","Money"],["members","Members"]].map(([id,label])=><button type="button" key={id} aria-current={value===id?"page":undefined} onClick={()=>onChange(id)}>{label}</button>)}<details><summary>More tools</summary><div>{groups.map(group=><div className="management-group" key={group.title}><span>{group.title}</span>{group.items.filter(([id])=>!["overview","inventory","planning","members"].includes(id)).map(([id,label])=><button type="button" key={id} aria-current={value===id?"page":undefined} onClick={e=>{onChange(id);e.currentTarget.closest('details')?.removeAttribute('open')}}>{label}</button>)}</div>)}</div></details></nav>;
 }

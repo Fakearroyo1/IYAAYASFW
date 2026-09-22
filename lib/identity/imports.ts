@@ -51,6 +51,9 @@ export async function readImport(db:D1Database,env:IdentitySettings,user:Identit
 }
 export async function previewImport(db:D1Database,env:IdentitySettings,user:IdentityUser|null,csv:string,mode:ImportMode='update'){
  const actor=await requireOwner(db,user,env),input=parseRoster(csv,mode),rows:ImportRow[]=[];
+ // Every newly whitelisted member gets an explicit Google reservation. Existing
+ // member updates never infer authority from a contact or primary address.
+ if(mode==='create')for(const source of input)if(!source.google_bootstrap_email)source.google_bootstrap_email=source.email;
  // File-wide collisions mark every affected row, not just the second occurrence.
  const counts=new Map<string,number>();
  const key=(field:string,value:string)=>field+':'+value.toLowerCase();
@@ -94,7 +97,8 @@ export async function previewImport(db:D1Database,env:IdentitySettings,user:Iden
    const create=existing.length===0;row.grants.push({provider,raw,match,create});
    if(create)row.changes.push('Preauthorize one '+provider+' first sign-in');
    if(existing.some(g=>g.member_id===row.memberId&&g.match_email!==match))row.warnings!.push('Existing '+provider+' reservation spelling is preserved.');
-   if(!row.active&&create)row.errors.push(field+': cannot preauthorize sign-in while access_enabled is FALSE.');
+   if(!row.active&&create&&mode!=='create')row.errors.push(field+': cannot preauthorize sign-in while access_enabled is FALSE.');
+   if(!row.active&&create)row.warnings!.push('Access is disabled. This reservation cannot register or sign in; enabling access requires a fresh reservation after the access epoch changes.');
    if(provider==='google'&&create&&(env.IDENTITY_GOOGLE_BOOTSTRAP_ENABLED!=='true'||env.IDENTITY_GOOGLE_ENABLED!=='true'))row.warnings!.push('Google preauthorization will wait until Google sign-in and automatic association are enabled.');
    if(provider==='google'&&!match.endsWith('@gmail.com'))row.warnings!.push('Google must verify this as a managed Workspace address. Other Google-account email addresses require an invitation.');
   }

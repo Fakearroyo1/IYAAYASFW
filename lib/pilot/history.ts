@@ -7,6 +7,7 @@ export type HistoryOptions = {
   search?: string;
   filter?: string;
   productId?: string;
+  memberId?: string;
   admin?: boolean;
   until?: number;
 };
@@ -151,6 +152,16 @@ export async function historyPage(
       );
       values.push(options.productId);
     }
+  } else if (kind === "receipts") {
+    if(!admin) fail("Administrator access is required.",403);
+    sql="SELECT r.* FROM workflow_receipt_facts r";time="r.created_at";key="r.id";
+    if(options.productId){where.push("r.product_id=?");values.push(options.productId);}
+  } else if (kind === "runItems") {
+    if(!admin)fail("Administrator access is required.",403);
+    sql=`SELECT i.id,i.run_id,i.product_id,i.option_id,p.name product_name,i.qty legacy_units,i.total_cost legacy_total_cost,i.vendor planned_supplier,r.name run_name,r.created_at,r.actor,r.status legacy_status,w.stage,d.state,d.planned_packs,d.planned_pack_units,d.planned_pack_price,d.price_source,d.price_at,d.actual_packs,d.actual_pack_units,d.actual_pack_price,d.line_discount,d.note,l.id receipt_line_id,l.receipt_id,l.qty purchased_units,l.received_qty,l.allocated_charges,l.total_cost,e.purchased_at,e.supplier,e.reference,e.funding,e.account_id,e.purchaser,(SELECT MAX(created_at) FROM stock_receipt_links WHERE purchase_line_id=l.id) last_received_at,(SELECT group_concat(id) FROM purchase_corrections WHERE purchase_line_id=l.id) correction_ids FROM restock_run_items i JOIN restock_runs r ON r.id=i.run_id JOIN products p ON p.id=i.product_id LEFT JOIN workflow_runs w ON w.run_id=r.id LEFT JOIN workflow_run_lines d ON d.line_id=i.id LEFT JOIN purchase_lines l ON l.run_line_id=i.id LEFT JOIN purchase_receipts e ON e.id=l.receipt_id`;time="r.created_at";key="i.id";
+  } else if (kind === "purchaseCorrections") {
+    if(!admin) fail("Administrator access is required.",403);
+    sql="SELECT c.*,l.receipt_id,l.product_id,l.product_name FROM purchase_corrections c JOIN purchase_lines l ON l.id=c.purchase_line_id";time="c.created_at";key="c.id";
   } else if (kind === "expenses") {
     if (!admin) fail("Administrator access is required.", 403);
     sql = "SELECT e.* FROM expenses e";
@@ -194,6 +205,7 @@ export async function historyPage(
             86400000,
       );
   } else fail("Choose a supported record type.");
+  if(admin&&options.memberId&&['orders','payments','ledger'].includes(kind)){where.push((kind==='orders'?'o':kind==='payments'?'p':'l')+'.member_id=?');values.push(options.memberId);}
   if (kind === "orders" && admin) {
     if (options.filter === "guest") where.push("o.member_id IS NULL");
     else if (options.filter === "unsettled")
@@ -280,51 +292,28 @@ export async function adminSummary(db: DB) {
     db,
     "SELECT COALESCE(SUM(cash_due-pending_reduced),0) guestOwed FROM order_balances WHERE member_id IS NULL AND status='pending'",
   );
-  return { ...sales, ...payments, ...members, ...expenses, ...guests, sold };
+  const coverage=await first(db,`SELECT COALESCE(SUM(i.remaining_qty),0) units,COALESCE(SUM(CASE WHEN COALESCE(i.cost,c.unit_cost) IS NULL THEN i.remaining_qty ELSE 0 END),0) unknownUnits,COALESCE(SUM(COALESCE(i.cost,c.unit_cost,0)*i.remaining_qty),0) knownCosts,COALESCE(SUM(CASE WHEN COALESCE(i.cost,c.unit_cost) IS NOT NULL THEN i.price*i.remaining_qty-i.remaining_tax-COALESCE(i.cost,c.unit_cost)*i.remaining_qty ELSE 0 END),0) knownProfit FROM item_balances i JOIN orders o ON o.id=i.order_id LEFT JOIN sale_cost_corrections c ON c.item_id=i.id WHERE o.status<>'void' AND i.custom=0`);
+  return { ...sales, ...payments, ...members, ...expenses, ...guests,...coverage, sold };
 }
-export async function productPerformance(
-  db: DB,
-  id: string,
-  options: HistoryOptions = {},
-) {
+export async function productPerformance(db: DB,id: string,options: HistoryOptions = {}) {
   if (!id || id.length > 80) fail("Choose a product.");
   const { start, end } = dateRange(options.from, options.to);
-  const stats = await first(
-    db,
-    "SELECT COALESCE(SUM(i.remaining_qty),0) units,COALESCE(SUM(i.price*i.remaining_qty),0) sales,COALESCE(SUM(i.remaining_tax),0) tax,COALESCE(SUM(CASE WHEN i.cost IS NULL THEN i.remaining_qty ELSE 0 END),0) unknownUnits,COALESCE(SUM(CASE WHEN i.cost IS NOT NULL THEN i.cost*i.remaining_qty ELSE 0 END),0) knownCost,COALESCE(SUM(CASE WHEN o.status='paid' THEN i.price*i.remaining_qty ELSE 0 END),0) paidSales FROM item_balances i JOIN order_balances o ON o.id=i.order_id WHERE i.product_id=? AND o.status<>'void' AND o.created_at>=? AND o.created_at<?",
-    id,
-    start,
-    end,
-  );
-  const [restocks, latest, events] = await Promise.all([
-    first(
-      db,
-      "SELECT COALESCE(SUM(json_extract(detail,'$.amount')),0) spending FROM audit WHERE target=? AND kind='stock_received' AND created_at>=? AND created_at<?",
-      id,
-      start,
-      end,
-    ),
-    first(
-      db,
-      "SELECT detail FROM audit WHERE target=? AND kind='stock_received' ORDER BY created_at DESC,id DESC LIMIT 1",
-      id,
-    ),
-    historyPage(db, { role: "admin" }, "events", {
-      ...options,
-      admin: true,
-      productId: id,
-    }),
+  const stats=await first(db,`SELECT COALESCE(SUM(i.remaining_qty),0) units,COALESCE(SUM(i.price*i.remaining_qty),0) sales,COALESCE(SUM(i.remaining_tax),0) tax,
+    COALESCE(SUM(CASE WHEN COALESCE(i.cost,c.unit_cost) IS NULL THEN i.remaining_qty ELSE 0 END),0) unknownUnits,
+    COALESCE(SUM(COALESCE(i.cost,c.unit_cost,0)*i.remaining_qty),0) knownCost,
+    COALESCE(SUM(CASE WHEN COALESCE(i.cost,c.unit_cost) IS NOT NULL THEN i.price*i.remaining_qty-i.remaining_tax ELSE 0 END),0) costedNetSales,
+    COALESCE(SUM(CASE WHEN o.status='paid' THEN i.price*i.remaining_qty ELSE 0 END),0) paidSales
+    FROM item_balances i JOIN order_balances o ON o.id=i.order_id LEFT JOIN sale_cost_corrections c ON c.item_id=i.id
+    WHERE i.product_id=? AND o.status<>'void' AND o.created_at>=? AND o.created_at<?`,id,start,end);
+  const refunds=await first(db,"SELECT COALESCE(SUM(c.refund),0) total FROM purchase_corrections c JOIN purchase_lines l ON l.id=c.purchase_line_id WHERE l.product_id=? AND c.created_at>=? AND c.created_at<?",id,start,end);
+  const [restocks,latest,events,receipts,missing]=await Promise.all([
+    first(db,"SELECT COALESCE(SUM(total_cost),0) spending FROM workflow_receipt_facts WHERE product_id=? AND created_at>=? AND created_at<?",id,start,end),
+    first(db,"SELECT * FROM workflow_receipt_facts WHERE product_id=? ORDER BY created_at DESC,id DESC LIMIT 1",id),
+    historyPage(db,{role:'admin'},'events',{...options,admin:true,productId:id}),
+    historyPage(db,{role:'admin'},'receipts',{...options,admin:true,productId:id}),
+    rows(db,"SELECT i.id,i.name,i.remaining_qty,o.code,o.created_at FROM item_balances i JOIN orders o ON o.id=i.order_id WHERE i.product_id=? AND i.cost IS NULL AND i.remaining_qty>0 AND o.status<>'void' AND o.created_at>=? AND o.created_at<? AND NOT EXISTS(SELECT 1 FROM sale_cost_corrections c WHERE c.item_id=i.id) ORDER BY o.created_at,i.id LIMIT 100",id,start,end)
   ]);
-  return {
-    stats: {
-      ...stats,
-      profit: stats!.unknownUnits
-        ? null
-        : stats!.sales - stats!.tax - stats!.knownCost,
-    },
-    restockSpending: restocks!.spending,
-    latestRestock: latest ? JSON.parse(latest.detail) : null,
-    events: events.records,
-    nextCursor: events.nextCursor,
-  };
+  return {stats:{...stats,profit:stats!.unknownUnits?null:stats!.sales-stats!.tax-stats!.knownCost,knownProfit:stats!.costedNetSales-stats!.knownCost,costCoverage:stats!.units?(stats!.units-stats!.unknownUnits)/stats!.units:null},restockSpending:restocks!.spending-refunds!.total,grossRestockSpending:restocks!.spending,restockRefunds:refunds!.total,
+    latestRestock:latest?{...latest,amount:latest.total_cost,newCost:latest.total_cost/latest.qty}:null,
+    receipts:receipts.records,receiptCursor:receipts.nextCursor,missingCosts:missing,events:events.records,nextCursor:events.nextCursor};
 }

@@ -65,7 +65,8 @@ check(dup.rows.every(r=>r.status==='Conflict'),'both duplicate rows blocked');
 const gd=await preview(csv([row('A','a@example.test','Same@gmail.com'),row('B','b@example.test','same@gmail.com')]));
 check(gd.rows.every(r=>r.status==='Conflict'),'case-variant Google grants collide conservatively');
 const bad=await preview(csv([row('Missing',''),row('=HYPERLINK("bad")','bad@example.test'),row('Off grant','offgrant@example.test','offgrant@gmail.com','FALSE'),row('Access','access@example.test','','yes')]).replace("'=HYPERLINK","=HYPERLINK"));
-check(bad.rows.every(r=>r.status==='Conflict'),'required fields, formula cells, disabled grants and invalid booleans rejected');
+check(bad.rows.filter((_,i)=>i!==2).every(r=>r.status==='Conflict'),'required fields, formula cells and invalid booleans rejected');
+check(bad.rows[2].status==='Create'&&bad.rows[2].active===0,'new disabled members can reserve an address but cannot register');
 for(const input of ['display_name,email,access_enabled,role\nN,n@example.test,TRUE,admin','display_name,email,access_enabled,member_id\nN,n@example.test,TRUE,old','display_name,email,email,access_enabled\nN,a@b.test,a@b.test,TRUE']){assert.throws(()=>I.parseRoster(input,'create'));checks++;}
 assert.throws(()=>I.parseRoster('display_name,email,access_enabled\n"unterminated,n@example.test,TRUE','create'));checks++;
 assert.throws(()=>I.parseRoster('display_name,email,access_enabled\nBad"quote,n@example.test,TRUE','create'));checks++;
@@ -132,11 +133,11 @@ const stagedCredential=await tryAssociation(liveEnv,'staged@gmail.com','staged-s
 equal(stagedCredential.member_id,heldMember.id,'enabling consumes the original preauthorization for its original member');
 equal(sqlite.prepare("SELECT status FROM identity_grants WHERE member_id=? AND kind='bootstrap'").get(heldMember.id).status,'consumed','successful association consumes grant');
 equal(count(),heldCount,'activation does not create or reimport members');
-equal(await tryAssociation(liveEnv,'no-grant@gmail.com','unapproved-subject'),null,'primary roster email without an explicit grant cannot register');
+equal((await tryAssociation(liveEnv,'no-grant@gmail.com','unapproved-subject')).member_id,sqlite.prepare("SELECT id FROM members WHERE email='no-grant@gmail.com'").get().id,'new member primary email gets an explicit creation-time grant');
 equal(await tryAssociation(liveEnv,'unknown@gmail.com','unknown-subject'),null,'unknown Google user cannot register');
 sqlite.prepare("UPDATE members SET active=0 WHERE email='later-disabled@example.test'").run();
 equal(await tryAssociation(liveEnv,'later-disabled@gmail.com','disabled-subject'),null,'disabled whitelist member cannot use a prior grant');
-equal(sqlite.prepare("SELECT count(*) n FROM identity_credentials WHERE subject IN ('staged-subject','unapproved-subject','unknown-subject','disabled-subject')").get().n,1,'only the explicitly authorized active member receives a credential');
+equal(sqlite.prepare("SELECT count(*) n FROM identity_credentials WHERE subject IN ('staged-subject','unapproved-subject','unknown-subject','disabled-subject')").get().n,2,'only explicitly authorized active members receive credentials');
 // Revoking the method used for fresh proof stops even a consumed approval mid-import.
 const revokedPreview=await preview(csv([row('Revoked proof','revoked-proof@example.test')]));
 const revokedPayload=payloadFor(revokedPreview),revokedGrant=await authorize(revokedPayload);

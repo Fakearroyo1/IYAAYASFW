@@ -44,6 +44,7 @@ sqlite.exec(fs.readFileSync("EARNING-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("REDEMPTION-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("PROFILE-EXPERIENCE-SCHEMA.sql", "utf8"));
 sqlite.exec(fs.readFileSync("ADMIN-EXPERIENCE-SCHEMA.sql", "utf8"));
+sqlite.exec(fs.readFileSync("WORKFLOW-SCHEMA.sql", "utf8"));
 class Statement {
   constructor(sql, v = []) {
     this.sql = sql;

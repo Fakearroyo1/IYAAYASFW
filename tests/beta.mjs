@@ -46,7 +46,7 @@ for (const f of [
     "EARNING-SCHEMA.sql",
     "REDEMPTION-SCHEMA.sql",
     "PROFILE-EXPERIENCE-SCHEMA.sql",
-    "ADMIN-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql", "WORKFLOW-SCHEMA.sql",
 ])
   sqlite.exec(fs.readFileSync(f, "utf8"));
 class Statement {

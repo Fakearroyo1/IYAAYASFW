@@ -125,7 +125,7 @@ export async function identityRoute(request:Request,env:Runtime,principal?:Acces
   if(action==='approval'){
    const row=await one<{purpose:string;action_payload:string|null}>(db,"SELECT g.purpose,f.action_payload FROM identity_grants g JOIN identity_flows f ON f.id=g.flow_id WHERE g.id=? AND g.member_id=? AND g.source_session=? AND g.status='pending' AND g.expires_at>?",text(b.approval,80),user!.memberId,user!.tokenHash,Date.now());if(!row)fail('Approval expired. Start again.',409);return json({purpose:row!.purpose,payload:row!.action_payload?JSON.parse(row!.action_payload):null});
   }
-  if(action==='adminRead')return json(await adminRead(db,env,user!,text(b.query||'',100),b.target?text(b.target,80):undefined));
+  if(action==='adminRead')return json(await adminRead(db,env,user!,text(b.query||'',100),b.target?text(b.target,80):undefined,text(b.readiness||'',40),Number(b.offset||0)));
   if(action==='importTemplate'){
    await requireOwner(db,user,env);
    if(importMode(b.mode)==='create')return json({csv:csvFile([NEW_MEMBER_HEADERS]),filename:'iyaayasfw-new-members-template.csv'});

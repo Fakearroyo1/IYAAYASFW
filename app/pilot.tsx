@@ -22,6 +22,7 @@ import {
   ReceiptText,
   Download,
   Medal,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,10 @@ import GearManager from "./store/gear-manager";
 import GuestManager from "./store/guest-manager";
 import InventoryAutopilot, {MonthClose} from "./store/inventory-autopilot";
 import Rewards from "./store/rewards";
+import RestockWorkspace from "./store/restock-workspace";
+import MoneyWorkspace,{MoneyOverview} from "./store/money-workspace";
+import DirectReceipt from "./store/direct-receipt";
+import ProductEditor from "./store/product-editor";
 import AdminNavigation from "./store/admin-navigation";
 import AdminDashboard from "./store/admin-dashboard";
 import { AccountProfileCard } from "./store/member-flair";
@@ -203,7 +208,7 @@ export default function Pilot() {
   const [emailTarget,setEmailTarget]=useState<Row|null>(null);
   const [inboxType,setInboxType]=useState("");
   const [identityContext,setIdentityContext]=useState<Row|null>(null);
-  const [memberWorkspace,setMemberWorkspace]=useState<'roster'|'identity'>('roster');
+  const [memberWorkspace,setMemberWorkspace]=useState<'roster'|'identity'>('identity');
   const [identityMemberId,setIdentityMemberId]=useState<string|undefined>();
   function showMemberSignIn(id?:string){setIdentityMemberId(id);setMemberWorkspace('identity');setTab('members');}
   const [taskTarget,setTaskTarget]=useState({type:"",id:""});
@@ -241,6 +246,7 @@ export default function Pilot() {
       const r = await secureFetch("/api/pilot?" + q, { cache: "no-store" });
       const j = (await r.json()) as Row;
       if (r.status === 401) {
+        if(data.member?.id){setLoading(false);setError('Your session expired. Verify access to continue; saved drafts remain in this tab.');return;}
         window.location.replace("/login");
         return;
       }
@@ -259,6 +265,7 @@ export default function Pilot() {
             "admin",
             "requests",
             "recognition",
+            "more",
           ].includes(requested)
             ? requested
             : "snacks";
@@ -285,6 +292,7 @@ export default function Pilot() {
   useEffect(() => {
     setCart(loadCart());
     const params=new URLSearchParams(window.location.search),section=params.get('section');
+    if(section&&section!=='identity')setTab(section);
     if(section==='identity'||section==='members'){setTab('members');if(section==='identity'||params.get('workspace')==='identity')setMemberWorkspace('identity');}
     void fetch('/identity/api',{cache:'no-store'}).then(r=>r.json() as Promise<Row>).then(c=>{setIdentityContext(c);}).catch(()=>{});
     try {
@@ -872,11 +880,11 @@ export default function Pilot() {
           </section>
           <section className="panel">
             <div className="section-title">
-              <h2>Funds & obligations</h2>
+              <h2>Sales & costs</h2>
             </div>
             <dl className="numbers">
               <div>
-                <dt>Prepaid credit held</dt>
+                <dt>Member credit · sources vary</dt>
                 <dd>{money(credits)}</dd>
               </div>
               <div>
@@ -884,12 +892,16 @@ export default function Pilot() {
                 <dd>{money(tax)}</dd>
               </div>
               <div>
-                <dt>Item cost</dt>
-                <dd>{costs === null ? "Costs incomplete" : money(costs)}</dd>
+                <dt>Known item costs</dt>
+                <dd>{money(a.summary.knownCosts)}</dd>
               </div>
               <div>
                 <dt>Morale spending</dt>
                 <dd>{money(morale)}</dd>
+              </div>
+              <div>
+                <dt>Known-cost margin</dt>
+                <dd>{money(a.summary.knownProfit)} · {a.summary.unknownUnits} units need cost evidence</dd>
               </div>
               <div>
                 <dt>Contribution before payment fees</dt>
@@ -905,11 +917,11 @@ export default function Pilot() {
               is not available cash. No bank account is connected.
             </p>
             <div className="inline-actions">
-              <Button variant="secondary" onClick={() => open("expense")}>
+              <Button variant="secondary" onClick={() => setTab("money")}>
                 Record expense
               </Button>
-              <Button variant="secondary" onClick={() => open("cashcount")}>
-                Count cash
+              <Button variant="secondary" onClick={() => setTab("money")}>
+                Check balances
               </Button>
             </div>
           </section>
@@ -933,7 +945,7 @@ export default function Pilot() {
           <div>
             <span className="eyebrow">Store management</span>
             <h1>Manage your store.</h1>
-            <IdentityLinks/>
+
             <p>Money, products, and people. Everything in its place.</p>
           </div>
           <div className="inline-actions">
@@ -947,7 +959,7 @@ export default function Pilot() {
           </div>
         </div>
         <div className="management-workspace">
-        <AdminNavigation value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next)}} />
+        <AdminNavigation value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next);const url=new URL(location.href);url.searchParams.set("section",next);url.searchParams.delete("run");history.replaceState(null,"",url)}} />
         <div className="admin-content">
           {["overview", "settings"].includes(tab) ? shopControls() : null}
           {data.admin.resetCount ? (
@@ -976,13 +988,15 @@ export default function Pilot() {
           ) : tab === "guest" ? (
             <GuestManager key={taskTarget.type+":"+taskTarget.id} initialOrderId={taskTarget.type==="guest"?taskTarget.id:""} onProduct={id=>{setGearId(id);setTab("inventory")}} onPayments={()=>setTab("payments")} onTransactions={()=>setTab("transactions")} onPickups={()=>setTab("pickups")}/>
           ) : tab === "planning" ? (
-            <InventoryAutopilot/>
+            <RestockWorkspace memberId={member.id}/>
+          ) : tab === "money" ? (
+            <MoneyWorkspace memberId={member.id} onPayments={()=>setTab("payments")} onMonth={()=>setTab("month")}/>
           ) : tab === "month" ? (
             <MonthClose/>
           ) : tab === "rewards" ? (
             <Rewards key={taskTarget.type+":"+taskTarget.id} admin initialProfileId={taskTarget.type==="profile"?taskTarget.id:""} initialReportId={taskTarget.type==="profile-report"?taskTarget.id:""}/>
           ) : tab === "overview" ? (
-            overview()
+            <><MoneyOverview memberId={member.id} onOpen={()=>setTab("money")}/>{overview()}</>
           ) : tab === "transactions" ? (
             <TransactionHub
               data={data}
@@ -1046,7 +1060,7 @@ export default function Pilot() {
                 <div>
                   <h2>Inventory</h2>
                   <p className="fine">
-                    Manage snack stock here and snack prices in the Pricing hub.
+                    Manage products, purchase defaults, and selling prices together.
                     Gear details, prices, and options live in the Gear Manager.
                   </p>
                 </div>
@@ -1284,8 +1298,8 @@ export default function Pilot() {
                 </div>
                 <Button onClick={() => open("member")}>Add member</Button>
               </div>
-              {identityContext?.owner&&<nav className="identity-choices" aria-label="Members and access sections"><Button variant={memberWorkspace==='roster'?'default':'outline'} aria-current={memberWorkspace==='roster'?'page':undefined} onClick={()=>setMemberWorkspace('roster')}>Members &amp; permissions</Button><Button variant={memberWorkspace==='identity'?'default':'outline'} aria-current={memberWorkspace==='identity'?'page':undefined} onClick={()=>showMemberSignIn()}>Sign-in, invitations &amp; CSV</Button></nav>}
-              {(!identityContext?.owner||memberWorkspace==='roster')&&<>
+
+              {!identityContext?.owner&&<>
               <div className="admin-filters">
                 <Field label="Search members">
                   <Input
@@ -1400,7 +1414,7 @@ export default function Pilot() {
               ))}
               {historyControl("members", true)}
               </>}
-              {identityContext?.owner&&memberWorkspace==='identity'&&<IdentityPage key={identityMemberId||'all-members'} embedded initialMemberId={identityMemberId}/>}
+              {identityContext?.owner&&<IdentityPage key={identityMemberId||'all-members'} embedded initialMemberId={identityMemberId} onMemberSettings={m=>open('member',{...m,isOwner:m.id===member.id})} onMemberRecovery={m=>open('password',m)} onMemberEmail={m=>{setEmailTarget(m);setTab('access')}}/>}
             </section>
           ) : tab === "activity" ? (
             <>
@@ -1986,12 +2000,8 @@ export default function Pilot() {
             ...(admin || member?.snacks
               ? [["snacks", "Snack bar", ShoppingBag]]
               : []),
-            ...(admin || member?.gear ? [["gear", "Unit gear", Shirt]] : []),
-            ...(admin || member?.snacks || member?.gear
-              ? [["requests", "Requests", MessageSquare]]
-              : []),
             ["account", "My account", Wallet],
-            ["recognition", "Recognition", Medal],
+            ["more", "More", MoreHorizontal],
             ...(admin || identityContext?.management ? [["admin", "Manage", SlidersHorizontal]] : []),
           ].map(([v, label, Icon]: any) => (
             <button
@@ -2027,7 +2037,7 @@ export default function Pilot() {
           </Button>
         </div>
       </header>
-      <IdentityLinks compact/>
+      {view!=="admin"&&<IdentityLinks compact/>}
       <main id="main" className="main">
         {loading ? (
           <div className="notice" role="status">
@@ -2070,6 +2080,8 @@ export default function Pilot() {
               </Button>
             </section>
           )
+        ) : view === "more" ? (
+          <section className="wf-more"><h1>More</h1>{(admin||member?.gear)&&<button onClick={()=>navigate("gear")}>Unit gear <ChevronRight/></button>}<button onClick={()=>navigate("recognition")}>Recognition <ChevronRight/></button>{(admin||member?.snacks||member?.gear)&&<button onClick={()=>navigate("requests")}>Requests <ChevronRight/></button>}<a href="/about">About &amp; help</a><a href="/identity">Linked sign-in methods</a><a href="mailto:snackbar@iyaayasfw.com">Contact the store</a></section>
         ) : view === "requests" ? (
           <CommunityBoard member={member} admin={!!data.adminVerified} />
         ) : view === "recognition" ? (
@@ -2521,7 +2533,9 @@ export default function Pilot() {
               creditFirst={modal.creditFirst}
             />
           ) : null}
-          {modal && !["checkout", "verify", "payment"].includes(modal.kind) ? (
+          {modal?.kind === "product"&&<ProductEditor product={modal} memberId={member.id} send={send} busy={busy||!!pending}/> }
+          {modal?.kind === "receive"&&<DirectReceipt product={modal} memberId={member.id} onSaved={()=>{setModal(null);void refresh()}}/>}
+          {modal && !["checkout", "verify", "payment", "product", "receive"].includes(modal.kind) ? (
             <form onSubmit={formSubmit}>
               <fieldset disabled={busy || !!pending || uploading}>
                 {modal.kind === "shop" ? (
@@ -2564,6 +2578,11 @@ export default function Pilot() {
                           audit: "Change history",
                           balances: "Balance ledger",
                           corrections: "Corrections & refunds",
+                          receipts:"Stock purchase receipt lines",
+                          purchaseCorrections:"Stock returns & damage",
+                          moneyChecks:"Money balance checks",
+                          moneyMovements:"Money movements",
+                          restockRuns:"Restock runs",
                         }).map(([v, t]) => (
                           <option key={v} value={v}>
                             {t}
@@ -2605,104 +2624,6 @@ export default function Pilot() {
                         Open email app
                       </a>
                     </Button>
-                  </>
-                ) : null}
-                {modal.kind === "product" ? (
-                  <>
-                    <div className="image-editor">
-                      {modal.image ? (
-                        <img src={modal.image} alt="Product preview" />
-                      ) : (
-                        <span className="image-placeholder">
-                          <Package size={30} />
-                        </span>
-                      )}
-                      <div>
-                        <Field
-                          label={
-                            modal.image
-                              ? "Replace product image"
-                              : "Add product image"
-                          }
-                        >
-                          <Input
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={(e) => {
-                              uploadImage(e.target.files?.[0]);
-                              e.target.value = "";
-                            }}
-                          />
-                        </Field>
-                        <p className="fine">
-                          JPG, PNG, or WebP · up to 5 MB. Save the product to
-                          apply.
-                        </p>
-                        {modal.image ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() =>
-                              setModal((m) => ({ ...m, image: null }))
-                            }
-                          >
-                            Remove image
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                    {uploading ? <p role="status">Uploading image…</p> : null}
-                    <Field
-                      name="name"
-                      label="Product name"
-                      value={modal.name}
-                      required
-                    />
-                    <div className="form-grid">
-                      <Field label="Category">
-                        <NativeSelect
-                          name="category"
-                          defaultValue={modal.category || "Snacks"}
-                        >
-                          {["Drinks", "Snacks", "Frozen"].map((c) => (
-                            <option key={c}>{c}</option>
-                          ))}
-                        </NativeSelect>
-                      </Field>
-                      <Field
-                        label="Variety / size"
-                        name="detail"
-                        value={modal.detail}
-                      />
-                      <Field
-                        label="On hand"
-                        name="stock"
-                        type="number"
-                        min="0"
-                        value={modal.stock ?? 0}
-                        required
-                      />
-                      <Field
-                        label="Restock at"
-                        name="reorder"
-                        type="number"
-                        min="0"
-                        value={modal.reorder ?? 5}
-                        required
-                      />
-                    </div>
-                    <p className="fine">
-                      Set selling price, unit cost, and tax treatment in the
-                      separate Pricing hub. New items can be saved as hidden
-                      until pricing is ready.
-                    </p>
-                    <Field label="Stock adjustment reason" name="reason" />
-                    <Toggle
-                      name="active"
-                      label="Make available for purchase"
-                      checked={!!modal.active}
-                    />
-                    <Button type="submit">Save product</Button>
                   </>
                 ) : null}
                 {modal.kind === "member" ? (

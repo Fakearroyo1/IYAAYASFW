@@ -2,11 +2,17 @@
 // output database, restore target, or production cutover exists in this module.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {databaseManifest,compareManifests,sha256} from './backup-manifest.mjs';
+import {databaseManifest,compareManifests,sha256,withManifestClock} from './backup-manifest.mjs';
 
 export function rehearseStaleIdentity(db){
  assert.ok(db.prepare('PRAGMA database_list').all().every(d=>!d.file),'Rehearsal requires an in-memory database.');
- const before=databaseManifest(db);
+ const evaluationTime=Date.now(),before=databaseManifest(db,{now:evaluationTime});
+ // Containment intentionally turns off derived tab reminders. Compare every
+ // other reminder field, rather than mistaking that access consequence for
+ // changed business history (or ignoring entire views).
+ const taskViews=['operational_tasks','operational_tasks_0'].filter(name=>before.objects[name]);
+ const tasks=()=>withManifestClock(db,evaluationTime,()=>Object.fromEntries(taskViews.map(name=>[name,db.prepare('SELECT * FROM "'+name+'" ORDER BY task_key').all().map(row=>row.type==='tab'?{...row,active:0}:row)])));
+ const expectedTasks=tasks();
  const accountingVersion=db.prepare("SELECT version FROM accounting_revision WHERE id='main'").get().version;
  const memberState=()=>sha256(JSON.stringify(db.prepare('SELECT * FROM members ORDER BY id').all().map(({active,...row})=>row)));
  const preservedMembers=memberState();
@@ -62,7 +68,9 @@ export function rehearseStaleIdentity(db){
  // including access-only changes. Verify its exact increment independently.
  assert.equal(db.prepare("SELECT version FROM accounting_revision WHERE id='main'").get().version,accountingVersion+before.objects.members.rows);
  const allowed=new Set(['members','accounting_revision','auth_sessions','auth_setup','auth_recovery','auth_admin_access']);
- const changed=compareManifests(before,databaseManifest(db),{schema:false}).filter(name=>!name.startsWith('identity_')&&!allowed.has(name));
+ assert.deepEqual(tasks(),expectedTasks,'Containment may only turn off tab reminder activity; every other task field is preserved.');
+ for(const view of taskViews){assert.equal(db.prepare('SELECT COUNT(*) n FROM "'+view+'" WHERE type=? AND active<>0').get('tab').n,0);allowed.add(view);}
+ const changed=compareManifests(before,databaseManifest(db,{now:evaluationTime}),{schema:false}).filter(name=>!name.startsWith('identity_')&&!allowed.has(name));
  assert.deepEqual(changed,[],'Business history, stock, rewards, privacy, passwords and member access selections must remain intact.');
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
  return {result:'passed',scope:'in-memory restored snapshot with synthetic stale credential/grant/session/ceremony/handoff canaries',access:'all restored members inactive; methods/principals revoked; sessions and pending authority invalidated',preservation:'business rows and member fields except active match; accounting cache revision advances by the exact member count',cutover:'denied until owner re-verifies access; no production operation'};

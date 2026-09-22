@@ -12,6 +12,7 @@ import {
   guard,
 } from "./core";
 import { saveGear } from "./gear";
+import { saveProduct } from "./product-editor";
 import { canShop } from "./access";
 const imagePath = (v: any) => {
   const image = str(v, 500);
@@ -64,6 +65,7 @@ export async function extendedMutation(
   atomic: (db: DB, s: D1PreparedStatement[]) => Promise<unknown>,
 ) {
   const actor = m.id;
+  if (b.action === "saveProduct") return saveProduct(db, actor, b, atomic);
   if (b.action === "saveGear") return saveGear(db, actor, b, atomic);
   if (b.action === "gearStock") {
     const id = str(b.id, 80),

@@ -30,6 +30,7 @@ jobs:
       - run: node tests/auth-containment.mjs
       - run: node tests/identity.mjs
       - run: node tests/member-import.mjs
+      - run: node tests/workflow.mjs
       - run: node tests/identity-protocols.mjs
       - run: node tests/identity-edge-cases.mjs
       - run: node tests/identity-release.mjs
@@ -47,6 +48,9 @@ jobs:
       - run: node tests/ui-contracts.mjs
       - run: node tests/http-security.mjs
       - run: pnpm run build
+      - run: node tests/workflow-http.mjs
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node tests/workflow-browser.mjs
       - run: node tests/identity-http.mjs
       - run: node tests/shared-nat.mjs
       - run: node tests/experience-http.mjs

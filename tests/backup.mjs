@@ -23,6 +23,8 @@ try{
  f.sqlite.prepare("UPDATE members SET debt=debt-1 WHERE id='restore-member'").run();
  f.sqlite.exec('DROP VIEW restore_clock_test');
  console.log('Recorded-clock view comparison preserves actual business-change detection.');
+ f.sqlite.exec("INSERT INTO settings(id,enabled,cashtag) VALUES('main',1,'Synthetic'); INSERT INTO members(id,email,name,role,debt,credit,due_since) VALUES('restore-overdue','overdue@example.test','Overdue fixture','member',2500,0,1)");
+ assert.equal(f.sqlite.prepare("SELECT active FROM operational_tasks_0 WHERE task_key='tab:restore-overdue'").get().active,1);
  const result=rehearseStaleIdentity(f.sqlite);assert.equal(result.result,'passed');
  assert.equal(f.sqlite.prepare("SELECT debt FROM members WHERE id='restore-member'").get().debt,725);
  assert.equal(f.sqlite.prepare("SELECT credit FROM members WHERE id='restore-member'").get().credit,250);

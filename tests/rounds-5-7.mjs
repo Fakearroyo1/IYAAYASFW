@@ -138,7 +138,7 @@ for (let i = 0; i < 2; i++)
     "EARNING-SCHEMA.sql",
     "REDEMPTION-SCHEMA.sql",
     "PROFILE-EXPERIENCE-SCHEMA.sql",
-    "ADMIN-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql", "WORKFLOW-SCHEMA.sql",
   ])
     sqlite.exec(fs.readFileSync(f, "utf8"));
 let checks = 0;

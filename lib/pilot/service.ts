@@ -37,6 +37,7 @@ import { accessFor, canShop } from "./access";
 import { catalogState, extendedMutation } from "./products";
 import { placeOrder } from "./orders";
 import { EarningPlan } from "./earning";
+import {newMemberGoogle} from './new-member-google';
 export { PilotError } from "./core";
 export async function initialize(db: DB) {
   if (await first(db, "SELECT id FROM settings WHERE id='main'")) return;
@@ -739,6 +740,7 @@ export async function mutate(
         }),
       );
     if (balanceEarning) statements.push(...balanceEarning.finish());
+    if (!old) statements.push(...await newMemberGoogle(db,id,email,actor,!!active));
     await atomic(db, statements);
     return { ok: true, memberId: id, created: !old, roleChanged };
   }

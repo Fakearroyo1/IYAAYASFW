@@ -58,7 +58,7 @@ claims and a real fresh-proof test establish support. Do not weaken the
 five-minute signed authentication-time requirement to bypass Google settings.
 
 The owner account suite is at `https://admin.iyaayasfw.com/?view=admin&section=members&workspace=identity`,
-under **Members & community → Members & access → Sign-in, invitations & CSV**.
+under **Members** (member detail for sign-in methods; **CSV import** for batch changes).
 The same screen also contains member purchasing permissions. Existing account-suite links
 redirect here, including the return from fresh owner verification. It includes member-bound
 invitations, independent login-request review and previewed CSV imports. CSV

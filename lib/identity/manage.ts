@@ -34,13 +34,23 @@ export async function ownMutation(db:D1Database,env:IdentitySettings,user:Identi
  }else fail('Unknown account action.',400);
  await atomic(db,statements);return{ok:true};
 }
-export async function adminRead(db:D1Database,env:IdentitySettings,user:IdentityUser|null,query:string,target?:string){
+export async function adminRead(db:D1Database,env:IdentitySettings,user:IdentityUser|null,query:string,target?:string,filter:string='',offset=0){
  const actor=await requireOwner(db,user,env);
  if(target){
-  const m=await one(db,'SELECT m.id,m.name,m.email,m.active,m.role,s.epoch,s.version,c.email contact_email FROM members m JOIN identity_state s ON s.member_id=m.id LEFT JOIN identity_contacts c ON c.member_id=m.id WHERE m.id=?',target);if(!m)fail('Member not found.',404);
+  const m=await one(db,`SELECT m.id,m.name,m.email,m.active,m.role,m.debt,m.credit,m.due_since,s.epoch,s.version,c.email contact_email,COALESCE(a.snacks,1) snacks,COALESCE(a.gear,1) gear,COALESCE(mc.tab_limit,3000) tab_limit,COALESCE(mc.posting_enabled,1) posting_enabled,COALESCE(mc.version,0) controls_version,EXISTS(SELECT 1 FROM auth_credentials WHERE member_id=m.id) password_set FROM members m JOIN identity_state s ON s.member_id=m.id LEFT JOIN identity_contacts c ON c.member_id=m.id LEFT JOIN member_access a ON a.member_id=m.id LEFT JOIN member_controls mc ON mc.member_id=m.id WHERE m.id=?`,target);if(!m)fail('Member not found.',404);
   return{member:{...m,rolloutEligible:rolloutAllowsMember(env,target)},methods:await all(db,'SELECT id,kind,status,label,observed_email,created_at,last_used_at,provenance FROM identity_credentials WHERE member_id=? ORDER BY created_at DESC',target),grants:await all(db,'SELECT id,kind,purpose,provider,match_email,status,expires_at,created_at,result_credential FROM identity_grants WHERE member_id=? ORDER BY created_at DESC LIMIT 100',target),events:await all(db,'SELECT event,detail,created_at FROM identity_audit WHERE target=? ORDER BY created_at DESC LIMIT 50',target)};
  }
- return{members:await all(db,"SELECT m.id,m.name,m.email,m.role,m.active,s.version FROM members m JOIN identity_state s ON s.member_id=m.id WHERE m.id=? OR instr(lower(m.name),lower(?))>0 OR instr(lower(m.email),lower(?))>0 ORDER BY m.name LIMIT 60",query,query,query),requests:await all(db,"SELECT id,provider,observed_email,created_at,attempts FROM identity_requests WHERE state='pending' ORDER BY created_at LIMIT 100"),owner:actor.memberId};
+ const start=Number.isSafeInteger(offset)&&offset>=0&&offset<=100000?offset:0;
+ const enabled=env.IDENTITY_GOOGLE_ENABLED==='true'&&env.IDENTITY_GOOGLE_BOOTSTRAP_ENABLED==='true';
+ const members=await all<Record<string,any>>(db,`WITH candidates AS (SELECT m.id,m.name,m.email,m.role,m.active,m.debt,m.credit,s.version,
+ EXISTS(SELECT 1 FROM auth_credentials WHERE member_id=m.id) OR EXISTS(SELECT 1 FROM identity_credentials WHERE member_id=m.id AND status='active') usable_method,
+ EXISTS(SELECT 1 FROM identity_grants g WHERE g.member_id=m.id AND g.kind='bootstrap' AND g.provider='google' AND g.status='pending' AND g.epoch=s.epoch AND g.expires_at>? AND lower(g.match_email) LIKE '%@gmail.com') google_ready,
+ EXISTS(SELECT 1 FROM identity_grants g WHERE g.member_id=m.id AND g.kind='bootstrap' AND g.provider='google' AND g.status='pending' AND g.epoch=s.epoch AND g.expires_at>?) google_reserved,
+ EXISTS(SELECT 1 FROM identity_grants g WHERE g.member_id=m.id AND g.kind='invite' AND g.status='pending' AND g.epoch=s.epoch AND g.expires_at>?) invitation_pending,
+ EXISTS(SELECT 1 FROM identity_requests r WHERE r.state='pending' AND lower(r.observed_email)=lower(m.email)) possible_request
+ FROM members m JOIN identity_state s ON s.member_id=m.id WHERE m.id=? OR instr(lower(m.name),lower(?))>0 OR instr(lower(m.email),lower(?))>0), ready AS (SELECT *,CASE WHEN active=0 THEN 'Disabled' WHEN usable_method THEN 'Ready' WHEN google_ready AND ? THEN 'Google ready' WHEN possible_request THEN 'Review needed' WHEN google_reserved AND ? THEN 'Google proof needed' WHEN invitation_pending THEN 'Invitation pending' ELSE 'Invitation needed' END readiness FROM candidates)
+ SELECT * FROM ready WHERE ?='' OR readiness=? ORDER BY name,id LIMIT 51 OFFSET ?`,Date.now(),Date.now(),Date.now(),query,query,query,enabled?1:0,enabled?1:0,filter,filter,start);
+ return{members:members.slice(0,50),nextOffset:members.length>50?start+50:null,offset:start,requests:await all(db,"SELECT id,provider,observed_email,created_at,attempts FROM identity_requests WHERE state='pending' ORDER BY created_at LIMIT 100"),owner:actor.memberId};
 }
 export async function adminMutation(db:D1Database,env:IdentitySettings,user:IdentityUser|null,payload:Record<string,unknown>,grantId:string){
  const actor=await requireOwner(db,user,env),op=text(payload.operation,40),target=text(payload.target,80),now=Date.now();

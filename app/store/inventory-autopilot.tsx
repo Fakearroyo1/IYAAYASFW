@@ -11,11 +11,11 @@ import {
   reasonField,
   cents,
 } from "./roadmap-shared";
-export default function InventoryAutopilot() {
+export default function InventoryAutopilot({initialTab="planning"}:{initialTab?:string}={}) {
   const state = useRoadmap({ kind: "inventory" }),
     d = state.data,
     a = state.action,
-    [tab, setTab] = useState("planning"),
+    [tab, setTab] = useState(initialTab),
     [selected, setSelected] = useState<Row[]>([]),
     [name, setName] = useState("Restock run"),
     [edit, setEdit] = useState(""),
@@ -638,7 +638,7 @@ export function MonthClose() {
               </div>
               <div>
                 <span>Known cost</span>
-                <strong>{money(d.sales.known_cost)}</strong>
+                <strong>{money(d.costCoverage?.known_cost??d.sales.known_cost)}</strong>
               </div>
               <div>
                 <span>Pending payments</span>
@@ -658,6 +658,7 @@ export function MonthClose() {
               Current tabs {money(d.balances.debt)} · current confirmed credit{" "}
               {money(d.balances.credit)}
             </p>
+<p className="fine">Known-cost margin {money(d.costCoverage?.known_margin)} · {d.costCoverage?.unknown_units??'Unknown'} units still need cost evidence. This margin excludes unknown-cost lines.</p><h3>Balance observations included in this report</h3>{d.money?.accounts.map((a:Row)=><p key={a.id}>{a.name}: {money(a.checked_amount)} · {a.observed_at?date(a.observed_at):'Not checked'} · {a.basis}</p>)}<p className="fine">Money → Check balances records the shared observations. This report preserves their amounts and timestamps.</p>
             <h3>Payments</h3>
             {d.payments.map((p: Row) => (
               <p key={p.method + p.status}>
@@ -689,11 +690,11 @@ export function MonthClose() {
               <ActionForm
                 key={month + ":" + d.period.version}
                 title="Record reconciliation and lock"
-                initial={{ cash: "", cashappReference: "", reason: "" }}
+                initial={{ cash: d.money?.accounts.find((a:Row)=>a.id==='cash')?.checked_amount==null?"":String(d.money.accounts.find((a:Row)=>a.id==='cash').checked_amount/100), cashappReference: "", reason: "" }}
                 fields={[
                   {
                     key: "cash",
-                    label: "Actual cash on hand ($)",
+                    label: "Legacy cash fallback ($; latest shared check takes precedence)",
                     type: "number",
                     min: 0,
                     step: "0.01",

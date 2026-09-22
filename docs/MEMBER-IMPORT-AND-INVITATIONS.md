@@ -1,18 +1,18 @@
 # Member CSV import and private invitations
 
-This change extends the identity branch reviewed at `00c738b534153a7e4dd7352234bbdf83acd82f6c`. It does not deploy the application or change production flags, provider credentials, session durations, or existing financial records. No new database migration is needed: the identity release's existing tables and triggers are required.
+This guide includes the September 21 workflow update. The existing identity tables and authority checks remain; the separate workflow migration is documented in [Workflow implementation evidence](WORKFLOW-REDESIGN-EVIDENCE.md). Existing provider credentials, session durations and financial records are preserved.
 
 ## Owner decisions
 
 - Every new member has an email address.
 - Import new members and update existing members are separate workflows.
-- Explicit Google addresses may receive first-sign-in preauthorization.
+- Every newly whitelisted member receives Google preauthorization for their primary email, unless an explicit alternative Google address is supplied.
 - Other sign-in methods enroll through member-bound private invitations, shared as a link, QR code, or copyable code.
 - Preserve existing members, IDs, credentials, sessions, financial history, rewards, and other site features.
 
 ## Import new members
 
-1. Open **Members & access → Sign-in, invitations & CSV → CSV import** on the administrator host.
+1. Open **Members → CSV import** on the administrator host.
 2. Choose **Import new members** and **Download CSV template**.
 3. Open the file in Excel. Keep its column headings and enter one member per row.
 4. Save as **CSV UTF-8 (.csv)**, then upload or drop the file into the importer.
@@ -27,10 +27,10 @@ The limit remains 100 data rows and 64 KB per upload. Preview lasts ten minutes;
 | `display_name` | Required, 1–80 characters. |
 | `email` | Required, supported primary member email, at most 200 characters. Stored lowercase to match the established member account contract. |
 | `contact_email` | Optional separate informational address. Does not authorize login. |
-| `google_bootstrap_email` | Optional exact Google-account address. Creates a one-use Google preauthorization when access is enabled. Blank means invitation-based onboarding. |
-| `access_enabled` | Required: TRUE/FALSE or 1/0, case-insensitive. FALSE cannot be combined with new Google preauthorization. |
+| `google_bootstrap_email` | Optional alternative Google-account address. If blank on a new-member import, the primary email receives a one-use Google reservation. Blank updates to existing members preserve authority. |
+| `access_enabled` | Required: TRUE/FALSE or 1/0, case-insensitive. FALSE blocks registration even with a reservation; subsequent reactivation invalidates that reservation and requires fresh authorization. |
 
-The primary email is **not** silently treated as a Google identity. Google may differ from the primary/contact email. Existing provider matching rules are retained: automatic first association requires Google's authoritative Gmail/managed Workspace proof, enabled Google bootstrap flags, and an allowed rollout. Google accounts using other third-party email domains can enroll by invitation. Importing does not enable provider flags or expand the rollout audience.
+New-member creation explicitly authorizes a first-sign-in reservation for the primary email; it does not create a linked Google credential. Google may differ when an alternative is explicitly entered. Existing provider matching rules are retained: automatic first association requires Google's authoritative Gmail/managed Workspace proof, enabled Google bootstrap flags, and an allowed rollout. Google accounts using other third-party email domains can enroll by invitation. Importing does not enable provider flags or expand the rollout audience.
 
 New-member defaults follow the existing add-member screen: ordinary member role, zero debt/credit, $30 tab limit, snacks and gear allowed, community posting enabled. Account activation is explicit in the CSV. The existing creation triggers initialize identity handles, profiles and rewards metadata. Import columns cannot set passwords, administrator roles, financial balances or rewards.
 
@@ -48,7 +48,7 @@ New methods are enabled for every active member on the existing whitelist, inclu
 members added later manually or through CSV. No extra beta list or rollout unlock is needed.
 Members with an existing password can open **Linked methods**, verify it, and add Google,
 Personal Microsoft or a passkey. With Google preauthorization enabled, a new member with
-an explicit Google grant can choose Google on the normal sign-in page and use that exact
+a pending Google grant can choose Google on the normal sign-in page and use that exact
 Google account. Existing pending, unexpired grants become usable without reimporting.
 A new member without that grant uses their private member-bound invitation.
 Provider email by itself does not authorize registration. Disabled or unknown members

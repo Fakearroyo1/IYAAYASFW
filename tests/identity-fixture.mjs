@@ -6,7 +6,7 @@ import { resolve, dirname, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
-export async function fixture() {
+export async function fixture({workflow=true}={}) {
   const out = resolve('.sites-runtime/identity-tests-'+process.pid);
   mkdirSync(out, {recursive:true});
   globalThis.__identityTestEnv = {OWNER_EMAIL:'owner@example.test'};
@@ -33,7 +33,7 @@ export async function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
   for (const file of readdirSync('drizzle').filter(p=>p.endsWith('.sql')).sort()) sqlite.exec(readFileSync('drizzle/'+file,'utf8'));
-  for(const file of ['AUTH','PRODUCT','SECURITY','BETA','ROUNDS','GUEST','AUTOPILOT','REWARDS','EARNING','REDEMPTION','PROFILE-EXPERIENCE','ADMIN-EXPERIENCE']) sqlite.exec(readFileSync(file+'-SCHEMA.sql','utf8'));
+  for(const file of ['AUTH','PRODUCT','SECURITY','BETA','ROUNDS','GUEST','AUTOPILOT','REWARDS','EARNING','REDEMPTION','PROFILE-EXPERIENCE','ADMIN-EXPERIENCE','WORKFLOW']) if(file!=='WORKFLOW'||workflow)sqlite.exec(readFileSync(file+'-SCHEMA.sql','utf8'));
   const hooks={beforeBatch:null,afterFirst:null};
   class Statement {
     constructor(sql,values=[]){this.sql=sql;this.values=values;}

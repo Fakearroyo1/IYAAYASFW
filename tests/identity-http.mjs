@@ -27,7 +27,7 @@ async function post(b,body,extra={}){const r=await request(b.host,'/identity/api
 const digest=v=>createHash('sha256').update(v).digest('hex');
 try{
  let db=await mf.getD1Database('DB');
- for(const file of [...readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort().map(x=>'drizzle/'+x),...['AUTH','PRODUCT','SECURITY','BETA','ROUNDS','GUEST','AUTOPILOT','REWARDS','EARNING','REDEMPTION','PROFILE-EXPERIENCE','ADMIN-EXPERIENCE','IDENTITY'].map(x=>x+'-SCHEMA.sql')])await db.exec(readFileSync(file,'utf8').replace(/--> statement-breakpoint/g,'').replace(/^--.*$/gm,'').replace(/\n/g,' '));
+ for(const file of [...readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort().map(x=>'drizzle/'+x),...['AUTH','PRODUCT','SECURITY','BETA','ROUNDS','GUEST','AUTOPILOT','REWARDS','EARNING','REDEMPTION','PROFILE-EXPERIENCE','ADMIN-EXPERIENCE','WORKFLOW','IDENTITY'].map(x=>x+'-SCHEMA.sql')])await db.exec(readFileSync(file,'utf8').replace(/--> statement-breakpoint/g,'').replace(/^--.*$/gm,'').replace(/\n/g,' '));
  const password='Synthetic worker password 13579',salt='12345678901234567890123456789012',hash='scrypt$16384$8$5$'+salt+'$'+scryptSync(password,salt,32,{N:16384,r:8,p:5,maxmem:32*1024*1024}).toString('hex');
  await db.prepare("INSERT INTO members(id,email,name,role,debt,credit) VALUES('owner','owner@example.test','Owner','admin',0,0),('second-admin','second@example.test','Second admin','admin',0,0),('member','member@example.test','Member','member',725,250)").run();
  await db.prepare("INSERT INTO settings(id) VALUES('main')").run();

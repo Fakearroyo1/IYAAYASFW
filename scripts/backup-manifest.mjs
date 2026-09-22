@@ -16,6 +16,7 @@ function manifestClock(db){
  });
  clocks.set(db,clock);return clock;
 }
+export function withManifestClock(db,now,callback){const clock=manifestClock(db),prior=clock.now;clock.now=new Date(now).toISOString();try{return callback()}finally{clock.now=prior}}
 export function restoreMemory(sql){
  const instructions=sql.replace(/'(?:''|[^'])*'/gs,"''").replace(/--[^\n]*/g,'');
  if(/\b(?:ATTACH|DETACH|VACUUM|load_extension)\b/i.test(instructions))throw Error('Backup contains an unexpected external-file operation.');

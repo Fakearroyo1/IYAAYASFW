@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][ValidateSet('database','assets','verify')][string]$Mode,[Parameter(Mandatory=$true)][string]$Output,[string]$Inventory,[string]$Assets,[string]$Baseline,[switch]$RehearseMigration,[switch]$RehearseStaleIdentity)
+param([Parameter(Mandatory=$true)][ValidateSet('database','assets','verify')][string]$Mode,[Parameter(Mandatory=$true)][string]$Output,[string]$Inventory,[string]$Assets,[string]$Baseline,[switch]$RehearseMigration,[switch]$RehearseStaleIdentity,[switch]$RehearseWorkflow)
 # Secret passes only through the child environment; no command-line/key output.
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -18,6 +18,7 @@ try {
  if($Mode -eq 'verify' -and $Inventory){$arguments+=@('--inventory',$Inventory)}
  if($Mode -eq 'verify' -and $Baseline){$arguments+=@('--baseline',$Baseline)}
  if($RehearseMigration){$arguments+='--rehearse-migration'}
+ if($RehearseWorkflow){$arguments+='--rehearse-workflow'}
  if($RehearseStaleIdentity){$arguments+='--rehearse-stale-identity'}
  & node @arguments
  if($LASTEXITCODE -ne 0){throw 'Backup or verification failed; no release gate was passed.'}

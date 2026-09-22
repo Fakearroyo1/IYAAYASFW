@@ -1,3 +1,4 @@
+import {moneySummary} from './money';
 import {
   type DB,
   type Row,
@@ -171,6 +172,8 @@ export async function monthReport(db: DB, value: unknown) {
       "SELECT id,actor,created_at,note FROM accounting_snapshots WHERE month=? ORDER BY created_at DESC",
       month,
     );
+  const costCoverage=await first(db,`SELECT COALESCE(SUM(i.remaining_qty),0) units,COALESCE(SUM(CASE WHEN COALESCE(i.cost,c.unit_cost) IS NULL THEN i.remaining_qty ELSE 0 END),0) unknown_units,COALESCE(SUM(COALESCE(i.cost,c.unit_cost,0)*i.remaining_qty),0) known_cost,COALESCE(SUM(CASE WHEN COALESCE(i.cost,c.unit_cost) IS NOT NULL THEN i.price*i.remaining_qty-i.remaining_tax-COALESCE(i.cost,c.unit_cost)*i.remaining_qty ELSE 0 END),0) known_margin FROM item_balances i JOIN orders o ON o.id=i.order_id LEFT JOIN sale_cost_corrections c ON c.item_id=i.id WHERE o.created_at>=? AND o.created_at<? AND o.status IN('paid','tab') AND i.custom=0`,start,end);
+  const money=await moneySummary(db);
   if (
     (await first(
       db,
@@ -184,6 +187,8 @@ export async function monthReport(db: DB, value: unknown) {
     end,
     revision,
     sales,
+    costCoverage,
+    money,
     payments,
     expenses,
     counts,
@@ -336,6 +341,7 @@ export async function mutateInventory(
         id,
       );
     if (!run) fail("This restock run is no longer open.");
+    if(await first(db,"SELECT run_id FROM workflow_runs WHERE run_id=?",id))fail("Use the current Restock screen for this run.",409);
     statements.push(
       guard(
         db,
@@ -623,10 +629,11 @@ export async function mutateInventory(
           JSON.stringify(report),
           JSON.stringify(b.checklist),
           reason,
-          int(b.cashOnHand, 0, 100000000),
+          report.money.accounts.find(a=>a.id==='cash')?.checked_amount??int(b.cashOnHand, 0, 100000000),
           noteText(b.cashappReference, 200),
         ),
       );
+      statements.push(stmt(db,"INSERT INTO accounting_money_snapshots(snapshot_id,report) VALUES(?,?)",op.id,JSON.stringify(report.money)));
     } else {
       if (report.period.status !== "closed")
         fail("This month is already open.");

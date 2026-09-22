@@ -11,6 +11,8 @@ import { rows } from "@/lib/pilot/core";
 import { catalogState } from "@/lib/pilot/products";
 import { accessFor } from "@/lib/pilot/access";
 import { exportRows, toCsv } from "@/lib/pilot/export";
+import {moneyHistory} from '@/lib/pilot/money';
+import {runHistory} from '@/lib/pilot/purchasing';
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
@@ -47,6 +49,12 @@ export async function GET(request: Request) {
       audit: "events",
       balances: "ledger",
       corrections: "corrections",
+      receipts: "receipts",
+      purchaseCorrections: "purchaseCorrections",
+      moneyChecks: "workflow",
+      moneyMovements: "workflow",
+      restockRuns: "workflow",
+      runItems: "runItems",
     };
     if (!Object.hasOwn(kinds, kind))
       throw new RequestError("Choose a record type.", 400);
@@ -74,7 +82,12 @@ export async function GET(request: Request) {
               corrections: [],
             },
           };
-          if (kinds[kind] === "inventory") {
+          let workflowRecords:any[]|null=null;
+          if(kinds[kind]==='workflow'){
+            const opts={from,to,until,cursor,limit:40};
+            const page=kind==='restockRuns'?await runHistory(db,opts):await moneyHistory(db,{...opts,kind:kind==='moneyMovements'?'movements':'observations'});
+            cursor=page.nextCursor||undefined;finished=!cursor;workflowRecords=page.records;
+          } else if (kinds[kind] === "inventory") {
             data.products = await catalogState(
               db,
               member,
@@ -122,7 +135,7 @@ export async function GET(request: Request) {
                 );
             }
           }
-          const records = exportRows(data, kind, from, to);
+          const records = workflowRecords||exportRows(data, kind, from, to);
           if (records.length) {
             const csv = toCsv(records);
             controller.enqueue(

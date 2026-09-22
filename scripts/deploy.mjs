@@ -69,7 +69,7 @@ for (const args of [
     "--config",
     configPath,
   ],
-  ...["GUEST-SCHEMA.sql", "AUTOPILOT-SCHEMA.sql", "REWARDS-SCHEMA.sql", "EARNING-SCHEMA.sql", "REDEMPTION-SCHEMA.sql", "PROFILE-EXPERIENCE-SCHEMA.sql", "ADMIN-EXPERIENCE-SCHEMA.sql"].map(
+  ...["GUEST-SCHEMA.sql", "AUTOPILOT-SCHEMA.sql", "REWARDS-SCHEMA.sql", "EARNING-SCHEMA.sql", "REDEMPTION-SCHEMA.sql", "PROFILE-EXPERIENCE-SCHEMA.sql", "ADMIN-EXPERIENCE-SCHEMA.sql", "WORKFLOW-SCHEMA.sql"].map(
     (file) => [
       "d1",
       "execute",
