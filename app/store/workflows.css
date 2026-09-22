@@ -136,6 +136,8 @@
   align-items: center;
   flex-wrap: wrap;
   position: static;
+  max-height: none;
+  overflow: visible;
 }
 .wf-admin-nav button {
   min-height: 44px;
@@ -153,21 +155,19 @@
   margin-bottom: 1.4rem;
 }
 .wf-admin-nav details {
-  position: relative;
+  min-width: 0;
+}
+.wf-admin-nav details[open] {
+  flex-basis: 100%;
 }
 .wf-admin-nav details > div {
-  position: absolute;
-  right: 0;
-  z-index: 15;
   background: var(--background, #fff);
   border: 1px solid #8884;
-  box-shadow: 0 8px 30px #0002;
   border-radius: 12px;
   padding: 0.6rem;
-  min-width: 230px;
   display: grid;
-  max-height: 65vh;
-  overflow: auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 0.6rem;
 }
 .dark .wf-admin-nav details > div {
   background: #171719;
@@ -186,7 +186,9 @@
   padding: 0.8rem 0.7rem 0.2rem;
 }
 .wf-admin-nav .management-group {
-  display: contents;
+  display: grid;
+  align-content: start;
+  gap: 0.2rem;
 }
 .wf-empty {
   padding: 2rem;

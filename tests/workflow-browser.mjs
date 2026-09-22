@@ -59,6 +59,61 @@ async function screenshot(page, name) {
     fullPage: true,
   });
 }
+async function adminMenu(page, label, allTools = false) {
+  const nav = page.getByRole("navigation", { name: "Store management" }),
+    menu = nav.locator("details"),
+    summary = menu.locator("summary");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  check(
+    await menu.evaluate((el) => el.open),
+    label + " keyboard opens More tools",
+  );
+  const geometry = await menu.evaluate((el) => {
+    const panel = el.querySelector(":scope > div").getBoundingClientRect(),
+      nav = el.closest("nav"),
+      bounds = nav.getBoundingClientRect();
+    return {
+      left: panel.left,
+      right: panel.right,
+      bottom: panel.bottom,
+      navBottom: bounds.bottom,
+      clipped: nav.scrollHeight > nav.clientHeight + 1,
+      viewport: innerWidth,
+    };
+  });
+  check(
+    geometry.left >= 0 &&
+      geometry.right <= geometry.viewport + 1 &&
+      geometry.bottom <= geometry.navBottom + 1 &&
+      !geometry.clipped,
+    label +
+      " expanded tools stay inside unclipped navigation: " +
+      JSON.stringify(geometry),
+  );
+  await fits(page, label + " expanded tools");
+  await screenshot(page, "admin-tools-" + label.replaceAll(" ", "-"));
+  const labels = allTools
+    ? await menu.getByRole("button").allTextContents()
+    : ["Store settings"];
+  for (const name of labels) {
+    if (!(await menu.evaluate((el) => el.open))) await summary.click();
+    const target = menu.getByRole("button", { name, exact: true, includeHidden: true });
+    await target.click();
+    check(
+      !(await menu.evaluate((el) => el.open)),
+      label + " selection closes menu: " + name,
+    );
+    check(
+      (await target.getAttribute("aria-current")) === "page",
+      label + " navigates to " + name,
+    );
+    check(
+      await summary.evaluate((el) => document.activeElement === el),
+      label + " focus returns to More tools",
+    );
+  }
+}
 try {
   const publicContext = await contextFor(null, 320),
     landing = await publicContext.newPage();
@@ -141,19 +196,23 @@ try {
   await page
     .getByRole("button", { name: "Check balances", exact: true })
     .click();
-  const checksForm = page
-    .locator("form")
-    .filter({
-      has: page.getByRole("heading", { name: "Check balances", exact: true }),
-    });
+  const checksForm = page.locator("form").filter({
+    has: page.getByRole("heading", { name: "Check balances", exact: true }),
+  });
   const amounts = checksForm.getByLabel(
     "Observed amount ($, blank if unchecked)",
     { exact: true },
   );
   await amounts.nth(0).fill("200");
   await amounts.nth(1).fill("300");
-  const observed=new Date(Date.now()-60000),stamp=new Date(observed.getTime()-observed.getTimezoneOffset()*60000).toISOString().slice(0,19);
-  for(const field of await checksForm.getByLabel("Observed at (local time)",{exact:true}).all())await field.fill(stamp);
+  const observed = new Date(Date.now() - 60000),
+    stamp = new Date(observed.getTime() - observed.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 19);
+  for (const field of await checksForm
+    .getByLabel("Observed at (local time)", { exact: true })
+    .all())
+    await field.fill(stamp);
   for (const checkbox of await checksForm
     .getByLabel("All activity after this check")
     .all())
@@ -174,14 +233,12 @@ try {
   await page
     .getByLabel("Run name", { exact: true })
     .fill("Browser shopping trip");
-  const card = page
-    .locator("article")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "Browser energy drink",
-        exact: true,
-      }),
-    });
+  const card = page.locator("article").filter({
+    has: page.getByRole("heading", {
+      name: "Browser energy drink",
+      exact: true,
+    }),
+  });
   await card.getByLabel("Add to run").check();
   await card.getByLabel("Packs", { exact: true }).fill("2");
   await screenshot(page, "plan-390-light");
@@ -201,14 +258,12 @@ try {
   await page
     .getByRole("button", { name: "Start shopping", exact: true })
     .click();
-  const line = page
-    .locator("article")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "Browser energy drink",
-        exact: true,
-      }),
-    });
+  const line = page.locator("article").filter({
+    has: page.getByRole("heading", {
+      name: "Browser energy drink",
+      exact: true,
+    }),
+  });
   await line.getByLabel("Item status").selectOption("grabbed");
   await line.getByRole("button", { name: "Save item", exact: true }).click();
   await page
@@ -280,11 +335,9 @@ try {
   await page
     .getByLabel("Record activity", { exact: true })
     .selectOption("expense");
-  const expense = page
-    .locator("form")
-    .filter({
-      has: page.getByRole("heading", { name: "Activity expense", exact: true }),
-    });
+  const expense = page.locator("form").filter({
+    has: page.getByRole("heading", { name: "Activity expense", exact: true }),
+  });
   await expense
     .getByLabel("Actual activity account", { exact: true })
     .selectOption("cashapp");
@@ -299,7 +352,9 @@ try {
   await expense
     .getByRole("button", { name: "Save record", exact: true })
     .click();
-  await page.getByText("Administrator session expired.", { exact: false }).waitFor();
+  await page
+    .getByText("Administrator session expired.", { exact: false })
+    .waitFor();
   check(
     (
       await f.one(
@@ -397,9 +452,15 @@ try {
         .waitFor();
       await fits(page, width + " Money " + theme);
       await screenshot(page, "money-" + width + "-" + theme);
+      await adminMenu(
+        page,
+        width + " " + theme,
+        width === 390 && theme === "dark",
+      );
     }
   await page.setViewportSize({ width: 780, height: 900 });
   await page.evaluate(() => (document.documentElement.style.zoom = "2"));
+  await adminMenu(page, "200-percent zoom");
   await fits(page, "200% zoom Money");
   await page.keyboard.press("Tab");
   check(
