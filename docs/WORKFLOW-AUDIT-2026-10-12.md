@@ -104,9 +104,42 @@ build, gear dry run and typecheck passed. All 813 installed packages had verifie
 registry signatures. The dependency gate passed with three moderate upstream
 advisories remaining and the one locally patched high advisory recorded explicitly.
 
-Final candidate CI, deployment/version readback and live smoke results are recorded
-after publication. Release uses current runtime bindings and flags, existing Access
-policies and domains, with the prior Worker version available for code rollback.
+The deployed source is `1a2356b45ef4e7f2a3ecbcb08769f3ba9fe767e4`. Its
+[Linux CI run 38200028583](https://github.com/Fakearroyo1/IYAAYASFW/actions/runs/38200028583)
+passed application tests, dependency audit and the full-history secret scan.
+[PR 21](https://github.com/Fakearroyo1/IYAAYASFW/pull/21) targets the existing
+production identity branch, `codex/identity-team-test-2026-09-21`; the historical
+`main` branch and paused automatic deployments remain unchanged.
+
+Publication completed at 03:42:43 UTC on October 12. Deployment
+`ab1517fb-cdc3-4410-bc56-560c8230aa4b` serves 100% Worker version
+`21de24ae-15da-4fcb-b14d-ff0cfc7dc663`. API readback confirmed the source tag,
+all 25 bindings, runtime flags/date, limits and observability. Settings changed only
+in release annotations. Domains, both Access applications and policies, MFA,
+Turnstile configuration, private R2 access, disabled Worker preview URLs and paused
+build triggers matched the pre-release snapshot. The separate gear Worker was not
+deployed. The prior Worker version remains available for code rollback.
+
+The post-release read-only comparison at 03:47:42 UTC found no changes in member and
+active-member counts, total debt/credit, product count/stock, order count/total,
+payment count/total/pending count, or money-movement count/total. The reported reset
+remained pending with no recovery code issued. This is an aggregate preservation
+check; the approved pre-release restore verified the complete table/view manifests.
+No production schema, restore, purchase, payment or account change was performed.
+
+Live checks completed at 03:51:02 UTC: the storefront, recovery page, About, Privacy
+and gear storefront returned 200; all 32 deployed static assets matched the packaged
+bytes and sizes; anonymous member/task/member-list APIs returned 401; the admin host
+redirected to the existing Cloudflare Access team. Edge at 320px and 390px displayed
+the recovery inputs and save action with no horizontal overflow, client page errors
+or failed app assets. The recovery mode is activated by client hydration. No live
+forms were submitted. Turnstile completion and member/admin transactions were
+exercised in the isolated end-to-end suites, not through a live member account.
+
+Safe publication and live-smoke summaries are retained under ignored
+`.sites-runtime/audit/workflow-audit-publication.json` and
+`.sites-runtime/audit/workflow-audit-live-smoke.json`. No private backup material is
+included in these summaries or the pull request.
 
 ## Evidence limits
 
