@@ -17,10 +17,11 @@ export async function initiativeMetrics(db:DB,i:Row){
  return {sales,feedback,reviews,losses,restock,demand,interested,openingQuantity:i.opening_qty,receivedQuantity:restock!.units};
 }
 export async function initiativePage(db:DB,m:Row,q:Row,admin=false){
- const shop=q.shop||'snacks';if(!['snacks','gear'].includes(shop))fail('Choose a shop.');
+ const targetId=q.id?str(q.id,80):'',target=targetId?await first(db,`${baseSQL} WHERE i.id=?`,targetId):null;
+ const shop=target?(target.category==='Gear'?'gear':'snacks'):q.shop||'snacks';if(!['snacks','gear'].includes(shop))fail('Choose a shop.');
  await shopGuard(db,m,shop==='gear'?'Gear':'Snacks');
  if(admin&&m.role!=='admin')fail('Administrator access is required.',403);
- const pageSize=admin?3:6,offset=int(Number(q.offset||0),0,100000),records=await rows(db,`${baseSQL} WHERE ${shop==='gear'?"p.category='Gear'":"p.category<>'Gear'"} ${admin?'':"AND i.state<>'draft' AND EXISTS(SELECT 1 FROM item_requests r WHERE r.id=i.request_id AND r.removed=0)"} ORDER BY i.created_at DESC,i.id DESC LIMIT ${pageSize+1} OFFSET ?`,offset);
+ const pageSize=admin?3:6,offset=int(Number(q.offset||0),0,100000),records=await rows(db,`${baseSQL} WHERE ${shop==='gear'?"p.category='Gear'":"p.category<>'Gear'"} ${targetId?'AND i.id=?':''} ${admin?'':"AND i.state<>'draft' AND EXISTS(SELECT 1 FROM item_requests r WHERE r.id=i.request_id AND r.removed=0)"} ORDER BY i.created_at DESC,i.id DESC LIMIT ${pageSize+1} OFFSET ?`,...(targetId?[targetId]:[]),offset);
  const found:Row[]=[];
  for(const i of records.slice(0,pageSize)){
   const options=await rows(db,'SELECT id,label,size,color FROM product_variants WHERE product_id=? AND active=1 ORDER BY label,id',i.product_id);
@@ -31,7 +32,7 @@ export async function initiativePage(db:DB,m:Row,q:Row,admin=false){
   const common={id:i.id,request_id:i.request_id,product_id:hasProduct||admin?i.product_id:null,name:i.name,detail:i.detail,image:i.image,kind:i.kind,state:i.state,note:i.note,ends_at:i.ends_at,starts_at:i.starts_at,version:i.version,options,interest,totals,feedback,canFeedback:i.kind==='trial'&&i.state==='open'&&i.ends_at>Date.now()&&!!m.posting_enabled&&await purchased(db,m.id,i.product_id)};
   found.push(admin?{...common,product_id:i.product_id,productActive:hasProduct,metrics:await initiativeMetrics(db,i)}:common);
  }
- return {records:found,nextOffset:records.length>pageSize?offset+pageSize:null};
+ return {records:found,nextOffset:records.length>pageSize?offset+pageSize:null,shop};
 }
 export async function mutateInitiative(db:DB,m:Row,b:Row,tokenHash?:string){
  const action=str(b.action,40),admin=INITIATIVE_ADMIN_ACTIONS.includes(action),op=await operation(db,m,b,admin,tokenHash),now=Date.now();

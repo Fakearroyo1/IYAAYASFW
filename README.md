@@ -2,7 +2,7 @@
 
 Identity rollout candidate: see [current release evidence](docs/IDENTITY-RELEASE-2026-09-21.md), [team test instructions](TEAM-TEST-CHECKLIST.md), and [owner recovery](OWNER-RECOVERY-RUNBOOK.md). New methods default off. The September 21 work order supersedes the historical discovery-only work order; real account/device gates remain explicit in the release evidence.
 
-A member store for snack bar purchases and unit gear, with durable orders, stock and price management, pickup tracking, and CSV exports. Production is hosted on the existing Cloudflare Worker at iyaayasfw.com; `main` triggers Workers Builds.
+A member store for snack bar purchases and unit gear, with durable orders, stock and price management, pickup tracking, and CSV exports. Production is hosted on the existing Cloudflare Worker at iyaayasfw.com. Automatic production deployment is paused during the approved identity rollout; releases use the validated manual configuration in `scripts/prepare-identity-release.mjs`.
 
 ## Member access and passwords
 
@@ -10,7 +10,7 @@ A member store for snack bar purchases and unit gear, with durable orders, stock
 - Administrators can manage both shops. The owner grants administrator roles and manages other administrators. The owner cannot be disabled or demoted.
 - With the deployed identity system enabled, active whitelisted members register through a private member-bound invitation or an explicit Google preauthorization. Preauthorized Google members choose Google on normal sign-in and use the exact approved account. Manage these in **Members & access → Sign-in, invitations & CSV**; see [member onboarding](docs/MEMBER-IMPORT-AND-INVITATIONS.md). New legacy First Time codes are disabled; previously issued codes retain their original expiry/redemption. Knowing a roster email alone cannot claim the account.
 - My account → Change password requires the current password. The current device stays signed in; other sessions are revoked.
-- Forgot password creates one pending in-app request per active account. Administrators review requests in Members, issue a private, single-use recovery code, and the request is resolved automatically. Requests do not themselves grant access. An administrator can dismiss a request without changing a password.
+- Forgot password creates one pending in-app request per active account. From **Needs attention**, an administrator opens **Issue recovery code**, verifies the member through a known contact method, and shares the private code and recovery-page link. The code expires after one hour and works once. The request stays open until the member saves a new password; completion revokes old sessions and resolves the request. The same action is available in **Members & access**. Requests do not themselves grant access.
 - Passwords use scrypt (N=16384, r=8, p=5), 15–128 characters, and are never stored in plaintext or returned. Setup codes and passwords are absent from audit logs.
 - Sessions use random 256-bit tokens stored only as hashes, with Secure, HttpOnly, SameSite=Lax, host-only cookies. Password replacement, role/access changes, deactivation, device revocation, and logout invalidate sessions as appropriate.
 - Authentication has per-IP and per-account limits. Mutations require same-origin requests. Authorization is enforced again within write transactions.

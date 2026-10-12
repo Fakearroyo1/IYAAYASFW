@@ -28,6 +28,9 @@ run("INSERT INTO orders(id,code,fingerprint,member_id,payer,method,total,tax,cos
 run("INSERT INTO reward_ledger(id,member_id,amount,rule_id,source,actor,note,created_at) VALUES('past',?,17,'manual','historical','owner','Previously earned',1)",legacy.id);
 const originalOrders=JSON.stringify(sqlite.prepare('SELECT * FROM orders').all()),originalMembers=JSON.stringify(sqlite.prepare('SELECT * FROM members').all());
 for(let i=0;i<2;i++)sqlite.exec(fs.readFileSync('EARNING-SCHEMA.sql','utf8'));
+// The synthetic launch precedes the fixed October 5 week-boundary scenario.
+// SQLite's real clock must not move the launch past purchases in this fixture.
+run("UPDATE earning_settings SET starts_at=? WHERE id='main'",Date.UTC(2026,9,1));
 assert.equal(JSON.stringify(sqlite.prepare('SELECT * FROM orders').all()),originalOrders);
 assert.equal(JSON.stringify(sqlite.prepare('SELECT * FROM members').all()),originalMembers);
 assert.equal(get('SELECT SUM(amount) n FROM reward_ledger WHERE member_id=?',legacy.id).n,17);

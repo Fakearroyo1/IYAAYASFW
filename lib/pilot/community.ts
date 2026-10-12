@@ -86,16 +86,19 @@ const page = (found: Row[], limit = 30) => ({
 export async function communityPage(db: DB, m: Row, q: Row, admin = false) {
   const kind = q.kind || "requests";
   if (kind === "requests") {
-    const shop = q.shop || "snacks";
+    const targetId=q.id?str(q.id,80):'';
+    const target=targetId?await first(db,'SELECT shop FROM item_requests WHERE id=? AND removed=0',targetId):null;
+    const shop = target?.shop || q.shop || "snacks";
     await checkShop(db, m, shop);
     const tail = pageTail(q.cursor, "r");
     const found = await rows(
       db,
       "SELECT r.*,pi.id initiative_id,pi.state initiative_state,m.name author_name,COALESCE(v.likes,0) likes,COALESCE(v.dislikes,0) dislikes,COALESCE(mine.value,0) my_vote FROM item_requests r JOIN members m ON m.id=r.member_id LEFT JOIN product_initiatives pi ON pi.request_id=r.id LEFT JOIN (SELECT request_id,SUM(value=1) likes,SUM(value=-1) dislikes FROM request_votes GROUP BY request_id) v ON v.request_id=r.id LEFT JOIN request_votes mine ON mine.request_id=r.id AND mine.member_id=? WHERE r.shop=? AND r.removed=0" +
-        tail.sql +
+        (targetId?' AND r.id=?':'')+tail.sql +
         " ORDER BY r.created_at DESC,r.id DESC LIMIT 31",
       m.id,
       shop,
+      ...(targetId?[targetId]:[]),
       ...tail.values,
     );
     const profiles = await memberFlairProfiles(db, found.slice(0, 30).map((r) => r.member_id));
@@ -150,7 +153,8 @@ export async function communityPage(db: DB, m: Row, q: Row, admin = false) {
   if (kind === "reports") {
     const found = await rows(
       db,
-      "SELECT r.*,m.name reporter_name,COALESCE(ir.title,p.name) title,COALESCE(ir.body,pr.body) body,COALESCE(ir.version,pr.version) post_version,COALESCE(ir.removed,pr.removed,1) removed,COALESCE(ir.member_id,pr.member_id) author_id,(SELECT name FROM members WHERE id=COALESCE(ir.member_id,pr.member_id)) author_name FROM community_reports r JOIN members m ON m.id=r.member_id LEFT JOIN item_requests ir ON r.kind='request' AND ir.id=r.target LEFT JOIN product_reviews pr ON r.kind='review' AND pr.id=r.target LEFT JOIN products p ON p.id=pr.product_id WHERE r.status='open' ORDER BY r.created_at,r.id LIMIT 100",
+      "SELECT r.*,m.name reporter_name,COALESCE(ir.title,p.name) title,COALESCE(ir.body,pr.body) body,COALESCE(ir.version,pr.version) post_version,COALESCE(ir.removed,pr.removed,1) removed,COALESCE(ir.member_id,pr.member_id) author_id,(SELECT name FROM members WHERE id=COALESCE(ir.member_id,pr.member_id)) author_name FROM community_reports r JOIN members m ON m.id=r.member_id LEFT JOIN item_requests ir ON r.kind='request' AND ir.id=r.target LEFT JOIN product_reviews pr ON r.kind='review' AND pr.id=r.target LEFT JOIN products p ON p.id=pr.product_id WHERE r.status='open'"+(q.id?' AND r.id=?':'')+" ORDER BY r.created_at,r.id LIMIT 100",
+      ...(q.id?[str(q.id,80)]:[]),
     );
     return { records: found };
   }

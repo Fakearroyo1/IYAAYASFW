@@ -294,5 +294,6 @@
   white-space: normal;
 }
 .identity-embedded .identity-members {
-  max-height: unset;
+  max-height: min(420px, 50dvh);
+  overscroll-behavior: contain;
 }
