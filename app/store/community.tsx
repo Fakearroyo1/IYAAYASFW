@@ -110,9 +110,11 @@ function Moderation({
 export default function CommunityBoard({
   member,
   admin,
+  initialRequestId="",
 }: {
   member: Row;
   admin: boolean;
+  initialRequestId?: string;
 }) {
   const shops = [
     ...(member.snacks || member.role === "admin" ? ["snacks"] : []),
@@ -130,6 +132,7 @@ export default function CommunityBoard({
     const q = new URLSearchParams({
       kind: "requests",
       shop,
+      id:initialRequestId,
       ...(cursor ? { cursor } : {}),
     });
     const r = await fetch("/api/community?" + q, { cache: "no-store" }),
@@ -138,19 +141,23 @@ export default function CommunityBoard({
     setData((old) =>
       cursor ? { ...j, records: [...old.records, ...j.records] } : j,
     );
+    if (initialRequestId && j.shop) setShop(j.shop);
   }
   const action = useCommunityAction(member.id, () => refresh());
   useEffect(() => {
     let active = true;
     setError("");
     setData({ records: [] });
-    fetch("/api/community?" + new URLSearchParams({ kind: "requests", shop }), {
+    fetch("/api/community?" + new URLSearchParams({ kind: "requests", shop, id:initialRequestId }), {
       cache: "no-store",
     })
       .then(async (r) => {
         const j = (await r.json()) as Row;
         if (!r.ok) throw Error(j.error);
-        if (active) setData(j);
+        if (active) {
+          setData(j);
+          if (initialRequestId && j.shop) setShop(j.shop);
+        }
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -158,7 +165,7 @@ export default function CommunityBoard({
     return () => {
       active = false;
     };
-  }, [shop]);
+  }, [shop, initialRequestId]);
   const disabled = action.busy || !!action.pending;
   return (
     <>
@@ -184,6 +191,7 @@ export default function CommunityBoard({
               key={s}
               variant={shop === s ? "default" : "secondary"}
               aria-pressed={shop === s}
+              disabled={!!initialRequestId}
               onClick={() => setShop(s)}
             >
               {s === "snacks" ? "Snack bar" : "Unit gear"}

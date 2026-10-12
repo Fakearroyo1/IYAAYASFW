@@ -33,6 +33,7 @@ export const adminGroups = [
     items: [
       ["members", "Members & access"],
       ["access", "Email changes"],
+      ["requests", "Item requests"],
       ["rewards", "Murley Bucks & profiles"],
       ["community", "Community moderation"],
     ],

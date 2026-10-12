@@ -913,6 +913,13 @@ equal(
   0,
   "old members gain no inferred login authority",
 );
+const Emails = await f.module('lib/pilot/email-changes');
+const providerOnlyMember = sqlite.prepare('SELECT id,email,role FROM members WHERE id=?').get(newPerson.memberId);
+const providerEmail = await Emails.emailChanges(db, providerOnlyMember);
+check(providerEmail.canRequest === false, 'provider-only email changes use administrator verification');
+check(!JSON.stringify(providerEmail).includes('password_hash'), 'email request capability never exposes password storage');
+sqlite.prepare('INSERT INTO auth_credentials(member_id,password_hash,updated_at) VALUES(?,?,?)').run(newPerson.memberId,'synthetic-presence-check',Date.now());
+check((await Emails.emailChanges(db, providerOnlyMember)).canRequest === true, 'password accounts can start the existing password-verified email workflow');
 sqlite.close();
 console.log(
   JSON.stringify({

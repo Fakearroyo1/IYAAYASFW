@@ -59,6 +59,9 @@ export default function Login() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("recovery") === "1") setMode("recovery");
+  }, []);
   function change(next: string) {
     setMode(next);
     setError("");
