@@ -8,6 +8,7 @@ export type HistoryOptions = {
   filter?: string;
   productId?: string;
   memberId?: string;
+  orderId?: string;
   admin?: boolean;
   until?: number;
 };
@@ -96,6 +97,7 @@ export async function historyPage(
       "SELECT i.*,o.created_at,o.code order_code,o.payer,o.status order_status FROM item_balances i JOIN order_balances o ON o.id=i.order_id";
     time = "o.created_at";
     key = "i.id";
+    if(options.orderId){where.push("o.id=?");values.push(options.orderId);}
     if (kind === "pickups") {
       where.push(
         "o.status<>'void' AND i.remaining_qty>0 AND (i.category='Gear' OR i.fulfillment IS NOT NULL) AND i.custom=0",
@@ -172,6 +174,7 @@ export async function historyPage(
     sql = MEMBER_SQL;
     time = "0";
     key = "m.id";
+    if(options.memberId){where.push("m.id=?");values.push(options.memberId);}
     const search = options.search || "";
     if (search.length > 100) fail("Search is too long.");
     if (search) {

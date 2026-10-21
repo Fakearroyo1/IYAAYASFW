@@ -211,6 +211,18 @@ export default function Pilot() {
   const [memberWorkspace,setMemberWorkspace]=useState<'roster'|'identity'>('identity');
   const [identityMemberId,setIdentityMemberId]=useState<string|undefined>();
   function showMemberSignIn(id?:string){setIdentityMemberId(id);setMemberWorkspace('identity');setTab('members');}
+  const memberDetailSequence=useRef(0);
+  async function showManagedMember(id:string){
+    if(identityContext?.owner){showMemberSignIn(id);return;}
+    const ticket=++memberDetailSequence.current;setTab('members');
+    try{
+      const r=await fetch('/api/history?'+new URLSearchParams({dataset:'members',scope:'admin',memberId:id})),j=await r.json() as Row;
+      if(ticket!==memberDetailSequence.current)return;
+      if(!r.ok)throw Error(j.error||'Could not open this member.');
+      if(!j.records?.[0])throw Error('This member is no longer available.');
+      open('member',j.records[0]);
+    }catch(e){if(ticket===memberDetailSequence.current)setError(e instanceof Error?e.message:'Could not open this member.');}
+  }
   const [taskTarget,setTaskTarget]=useState({type:"",id:""});
   const [gearRevision, setGearRevision] = useState(0);
   const [gearId, setGearId] = useState(""),
@@ -602,6 +614,30 @@ export default function Pilot() {
     }
     setModal({ ...row, kind });
   }
+  function openTask(task: Row) {
+    const { destination, target, person, type, reference } = task;
+    if (task.active && type === "payment") {
+      open("verify", { id: target, amount: task.amount, member_name: person, order_code: reference });
+      return;
+    }
+    if (task.active && type === "reset") {
+      open("password", { id: target, name: person, email: task.member_email, role: task.member_role, active: task.member_active });
+      return;
+    }
+    if (destination === "requests") { setTaskTarget({ type, id: target }); setTab("requests"); return; }
+    setTaskTarget({ type, id: target });
+    if (destination === "members") {
+      void showManagedMember(target);
+      return;
+    }
+    if (destination === "inventory") {
+      const product = products.find(p => p.id === target);
+      if (product?.category === "Gear") setGearId(target);
+      else if (product) open("product", product);
+      else setInventorySearch(person);
+    }
+    setTab(destination);
+  }
   function checkout() {
     open("checkout");
   }
@@ -830,7 +866,7 @@ export default function Pilot() {
       );
     return (
       <>
-        <AdminDashboard onNavigate={setTab} onInbox={type=>{setInboxType(type);setTab("attention")}} />
+        <AdminDashboard revision={data.updatedAt} onAction={openTask} onNavigate={setTab} onInbox={type=>{setInboxType(type);setTab("attention")}} />
         <div className="stats">
           <div className="stat">
             <small>Recorded sales</small>
@@ -961,30 +997,27 @@ export default function Pilot() {
         <div className="management-workspace">
         <AdminNavigation value={tab} onChange={next=>{setInboxType("");setTaskTarget({type:"",id:""});setTab(next);const url=new URL(location.href);url.searchParams.set("section",next);url.searchParams.delete("run");history.replaceState(null,"",url)}} />
         <div className="admin-content">
+          {taskTarget.type?<Button variant="ghost" onClick={()=>{setTaskTarget({type:'',id:''});setTab('attention')}}>← Back to open tasks</Button>:null}
           {["overview", "settings"].includes(tab) ? shopControls() : null}
-          {data.admin.resetCount ? (
+          {data.admin.resetCount&&!['overview','attention'].includes(tab) ? (
             <div className="notice reset-notice">
               <strong>
                 {data.admin.resetCount} password reset{" "}
                 {data.admin.resets.length === 1 ? "request" : "requests"}
               </strong>
-              <Button variant="secondary" onClick={() => setTab("members")}>
+              <Button variant="secondary" onClick={() => {setInboxType("reset");setTab("attention");}}>
                 Review requests
               </Button>
             </div>
           ) : null}
           {tab === "attention" ? (
-            <TaskInbox key={inboxType} initialType={inboxType} member={member} onAction={(destination,target,person,type,reference)=>{
-              if(destination==="requests"){navigate("requests");return}
-              setTaskTarget({type,id:target});setTab(destination);
-              if(type==="payment"){setPaymentFilter("all");open("verify",{id:target,amount:0,member_name:person,order_code:reference.startsWith("P-")?undefined:reference});}
-              if(destination==="members")setMemberSearch(person);
-              if(destination==="inventory"){const p=products.find(p=>p.id===target);if(p?.category==="Gear")setGearId(target);else setInventorySearch(p?.name||person)}
-            }}/>
+            <TaskInbox key={inboxType} initialType={inboxType} revision={data.updatedAt} member={member} onAction={openTask}/>
           ) : tab === "access" ? (
-            <EmailChanges member={member} admin targetMember={emailTarget||undefined}/>
+            <EmailChanges key={taskTarget.id} member={member} admin targetMember={emailTarget||undefined} initialRequestId={taskTarget.type==='email'?taskTarget.id:''}/>
+          ) : tab === "requests" ? (
+            <CommunityBoard key={taskTarget.id} initialRequestId={taskTarget.type==='request'?taskTarget.id:''} member={member} admin />
           ) : tab === "trials" ? (
-            <ProductInitiatives member={member} admin onProduct={id=>{const p=products.find(p=>p.id===id);if(p?.category==="Gear"){setGearId(id);setTab("inventory")}else if(p){setTab("inventory");open("product",p)}else{setInventorySearch("");setTab("inventory");refresh()}}}/>
+            <ProductInitiatives key={taskTarget.id} member={member} admin initialId={taskTarget.type==='trial'?taskTarget.id:''} onProduct={id=>{const p=products.find(p=>p.id===id);if(p?.category==="Gear"){setGearId(id);setTab("inventory")}else if(p){setTab("inventory");open("product",p)}else{setInventorySearch("");setTab("inventory");refresh()}}}/>
           ) : tab === "guest" ? (
             <GuestManager key={taskTarget.type+":"+taskTarget.id} initialOrderId={taskTarget.type==="guest"?taskTarget.id:""} onProduct={id=>{setGearId(id);setTab("inventory")}} onPayments={()=>setTab("payments")} onTransactions={()=>setTab("transactions")} onPickups={()=>setTab("pickups")}/>
           ) : tab === "planning" ? (
@@ -1007,14 +1040,13 @@ export default function Pilot() {
               running={busy}
             />
           ) : tab === "team" ? (
-            <TeamBoard memberId={member.id} />
+            <TeamBoard key={taskTarget.id} memberId={member.id} initialThreadId={taskTarget.type==='team'?taskTarget.id:''} />
           ) : tab === "community" ? (
             <ModerationQueue
+              key={taskTarget.id}
+              initialReportId={taskTarget.type==='report'?taskTarget.id:''}
               memberId={member.id}
-              onMember={(name) => {
-                setMemberSearch(name);
-                setTab("members");
-              }}
+              onMember={(_name,id) => {void showManagedMember(id)}}
             />
           ) : tab === "pricing" ? (
             <PricingHub
@@ -1036,7 +1068,7 @@ export default function Pilot() {
               busy={busy || !!pending}
             />
           ) : tab === "pickups" ? (
-            <PickupBoard data={data} send={send} busy={busy || !!pending} />
+            <PickupBoard key={taskTarget.id} initialOrderId={taskTarget.type==='pickup'?taskTarget.id:''} data={data} send={send} busy={busy || !!pending} />
           ) : tab === "inventory" &&
             gearId &&
             (gearId === "new" || products.some((p) => p.id === gearId)) ? (
@@ -1414,7 +1446,7 @@ export default function Pilot() {
               ))}
               {historyControl("members", true)}
               </>}
-              {identityContext?.owner&&<IdentityPage key={identityMemberId||'all-members'} embedded initialMemberId={identityMemberId} onMemberSettings={m=>open('member',{...m,isOwner:m.id===member.id})} onMemberRecovery={m=>open('password',m)} onMemberEmail={m=>{setEmailTarget(m);setTab('access')}}/>}
+              {identityContext?.owner&&<IdentityPage key={identityMemberId||'all-members'} embedded initialMemberId={identityMemberId} suspended={!!modal} revision={data.updatedAt} onMemberSettings={m=>open('member',{...m,isOwner:m.id===member.id})} onMemberRecovery={m=>open('password',m)} onMemberEmail={m=>{setEmailTarget(m);setTab('access')}}/>}
             </section>
           ) : tab === "activity" ? (
             <>
@@ -2083,7 +2115,7 @@ export default function Pilot() {
         ) : view === "more" ? (
           <section className="wf-more"><h1>More</h1>{(admin||member?.gear)&&<button onClick={()=>navigate("gear")}>Unit gear <ChevronRight/></button>}<button onClick={()=>navigate("recognition")}>Recognition <ChevronRight/></button>{(admin||member?.snacks||member?.gear)&&<button onClick={()=>navigate("requests")}>Requests <ChevronRight/></button>}<a href="/about">About &amp; help</a><a href="/identity">Linked sign-in methods</a><a href="mailto:snackbar@iyaayasfw.com">Contact the store</a></section>
         ) : view === "requests" ? (
-          <CommunityBoard member={member} admin={!!data.adminVerified} />
+          <CommunityBoard key={taskTarget.id} initialRequestId={taskTarget.type==='request'?taskTarget.id:''} member={member} admin={!!data.adminVerified} />
         ) : view === "recognition" ? (
           <Rewards/>
         ) : view === "account" ? (
@@ -2969,6 +3001,31 @@ export default function Pilot() {
                           replaces any previous one.
                         </p>
                         <Button type="submit">Generate setup code</Button>
+                      </>
+                    )}
+                  </>
+                ) : null}
+                {modal.kind === "password" ? (
+                  <>
+                    <p>Reset the password for <strong>{modal.name}</strong>{modal.email ? " (" + modal.email + ")" : ""}.</p>
+                    {modal.code ? (
+                      <>
+                        <Field label="Private recovery code">
+                          <Input readOnly value={modal.code} autoComplete="off" onFocus={e => e.currentTarget.select()} />
+                        </Field>
+                        <Button type="button" variant="secondary" onClick={async () => {
+                          try { await navigator.clipboard.writeText(modal.code); setNotice("Recovery code copied. Share it privately with the verified member."); }
+                          catch { setError("Select the recovery code above and copy it manually."); }
+                        }}>Copy recovery code</Button>
+                        <p>Share the code privately. The member opens <a className="text-link" href={(identityContext?.origins?.member || "") + "/login?password=1&recovery=1"} target="_blank" rel="noopener noreferrer">the password recovery page</a>, enters their approved email and this code, and chooses a new password.</p>
+                        <p className="fine">Expires {date(modal.expiresAt)}. This code works once and is shown only here. The request stays open until the member completes recovery. Completing recovery signs out their previous sessions.</p>
+                        <Button type="submit">Done</Button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="fine">The code expires in one hour. A new code replaces any earlier code. The member chooses their own password.</p>
+                        <label className="toggle"><input type="checkbox" name="identityVerified" required /><span>I verified this member through a known contact method.</span></label>
+                        <Button type="submit">Generate recovery code</Button>
                       </>
                     )}
                   </>

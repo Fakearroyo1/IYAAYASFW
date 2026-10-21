@@ -5,13 +5,14 @@ import { resolve, extname } from "node:path";
 import { createRequire } from "node:module";
 import { createHash, randomBytes, scryptSync } from "node:crypto";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
+import {challengeBindings,challengeService} from './security-fixtures.mjs';
 const require = createRequire(import.meta.url),
   { Miniflare } = require(
     require.resolve("miniflare", {
       paths: [require.resolve("wrangler/package.json")],
     }),
   );
-export async function workflowWorker() {
+export async function workflowWorker({challenge=false}={}) {
   const { privateKey, publicKey } = await generateKeyPair("RS256"),
     jwk = {
       ...(await exportJWK(publicKey)),
@@ -37,6 +38,7 @@ export async function workflowWorker() {
     TURNSTILE_SITE_KEY: "fixture",
     TURNSTILE_SECRET_KEY: "fixture",
     OWNER_EMAIL: "owner@example.test",
+    ...(challenge?challengeBindings:{}),
   };
   let outbound = 0,
     dropAction = null;
@@ -55,6 +57,7 @@ export async function workflowWorker() {
     r2Buckets: ["BUCKET"],
     bindings: settings,
     outboundService: async (request) => {
+      if(challenge&&new URL(request.url).hostname==='challenges.cloudflare.com')return challengeService(request);
       if (request.url === issuer + "/cdn-cgi/access/certs")
         return Response.json({ keys: [jwk] });
       outbound++;
@@ -204,6 +207,9 @@ export async function workflowWorker() {
   const browserRoute = async (route) => {
     const req = route.request(),
       url = new URL(req.url());
+    if(challenge&&url.href==='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'){
+      await route.fulfill({contentType:'text/javascript',body:"window.turnstile={render(el,options){window.fixtureChallenge=options;options.callback('test-valid');return 'fixture'},reset(){window.fixtureChallenge?.callback('test-valid')},remove(){}};"});return;
+    }
     if (
       ![
         "test.local",
