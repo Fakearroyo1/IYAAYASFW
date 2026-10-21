@@ -1,4 +1,5 @@
 "use client";
+import {secureFetch} from "@/lib/identity/client";
 import { BrandMark, ThemeToggle } from "@/app/store/appearance";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,11 @@ export default function Login() {
     widgetId = useRef<string | null>(null);
   const [challengeToken, setChallengeToken] = useState(""),
     [setupCode, setSetupCode] = useState("");
+  const [methods,setMethods]=useState<Record<string,boolean>|null>(null);
+  useEffect(()=>{void fetch('/identity/api',{cache:'no-store'}).then(r=>r.json() as Promise<{enabled:boolean;methods:Record<string,boolean>}>).then(c=>{if(c.enabled)setMethods(c.methods);}).catch(()=>{});},[]);
   useEffect(() => {
     let disposed = false;
-    fetch("/api/auth")
+    secureFetch("/api/auth")
       .then((r) => r.json())
       .then((config: any) => {
         if (!config.siteKey)
@@ -56,6 +59,9 @@ export default function Login() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("recovery") === "1") setMode("recovery");
+  }, []);
   function change(next: string) {
     setMode(next);
     setError("");
@@ -82,7 +88,7 @@ export default function Login() {
           recovery: "completeRecovery",
         } as Record<string, string>
       )[mode];
-      const r = await fetch("/api/auth", {
+      const r = await secureFetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -132,7 +138,7 @@ export default function Login() {
         </div>
         <h1>
           {mode === "login"
-            ? "Member sign-in"
+            ? methods ? "Use existing password" : "Member sign-in"
             : mode === "forgot"
               ? "Reset your password"
               : ["setup", "recovery"].includes(mode)
@@ -150,6 +156,7 @@ export default function Login() {
                   ? "Choose a password only you know. Your setup code can be used once."
                   : "Enter your account email. An administrator will receive a reset request inside the store."}
         </p>
+        {mode==='login'&&methods&&<p><a href={'/login?next='+encodeURIComponent(typeof window==='undefined'?'/':new URLSearchParams(window.location.search).get('next')||'/')}>Use Google, Personal Microsoft or a passkey</a></p>}
         <form onSubmit={submit}>
           <fieldset disabled={busy}>
             <label className="field">
@@ -276,6 +283,7 @@ export default function Login() {
           </Button>
         )}
         <p className="fine">Pickup only · Access by approved email.</p>
+        <nav className="identity-links" aria-label="App information"><a href="/about">About the app</a><a href="/privacy">Privacy policy</a></nav>
         {mode === "login" ? (
           <p className="fine">
             Sessions expire automatically. Administrators sign in more often to

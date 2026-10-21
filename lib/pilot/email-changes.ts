@@ -6,9 +6,12 @@ export const EMAIL_ADMIN_ACTIONS=['emailAdminRequest','emailCode','emailApprove'
 const terminal=['completed','rejected','cancelled'];
 const publicFields='id,member_id,old_email,new_email,status,code_expires_at,verified_at,approved_at,completed_at,note,version,created_at,updated_at';
 export async function emailChanges(db:DB,m:Row,admin=false,q:Row={}){
+ if(admin&&m.role!=='admin')fail('Verified administrator access is required.',403);
+ const canRequest=!admin&&!ownerAccount(m)&&!!await first(db,'SELECT member_id FROM auth_credentials WHERE member_id=?',m.id);
  const offset=int(Number(q.offset||0),0,100000);
+ if(q.id){const id=str(q.id,80),records=await rows(db,`SELECT ${publicFields} FROM email_change_requests WHERE id=? ${admin?'':'AND member_id=?'}`,id,...(admin?[]:[m.id]));return {records,nextOffset:null,canRequest};}
  const records=await rows(db,`SELECT ${publicFields} FROM email_change_requests ${admin?'':'WHERE member_id=?'} ORDER BY CASE WHEN status IN('awaiting_verification','ready_for_review','access_sync_pending') THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 51 OFFSET ?`,...(admin?[]:[m.id]),offset);
- return {records:records.slice(0,50),nextOffset:records.length>50?offset+50:null};
+ return {records:records.slice(0,50),nextOffset:records.length>50?offset+50:null,canRequest};
 }
 function canManage(actor:Row,target:Row){
  if(ownerAccount(target))fail('The owner email is also a deployment security setting. Keep it unchanged here; coordinate the owner setting and Access policy together.',409);

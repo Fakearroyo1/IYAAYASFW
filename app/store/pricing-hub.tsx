@@ -121,7 +121,7 @@ function Calculator({
 }) {
   const effectiveCost = variant?.cost ?? p.cost,
     currentPrice = variant?.price ?? p.price,
-    cost = useCost(effectiveCost ?? 0),
+    cost = useCost(effectiveCost),
     [margin, setMargin] = useState("30"),
     [tax, setTax] = useState(p.tax_bp == null ? "" : String(p.tax_bp / 100)),
     [sale, setSale] = useState(
@@ -130,6 +130,8 @@ function Calculator({
     [updateCost, setUpdateCost] = useState(false),
     [inherit, setInherit] = useState(!!variant && variant.price === null),
     [localMessage, setLocalMessage] = useState("");
+  const [purchaseOptions,setPurchaseOptions]=useState<Row[]>([]),[optionId,setOptionId]=useState('');
+  useEffect(()=>{let live=true;fetch('/api/workflows?view=catalog',{cache:'no-store'}).then(r=>r.json() as Promise<Row>).then(j=>{const entry=j.items?.find((x:Row)=>x.product_id===p.id&&x.option_id===(variant?.id||''));if(live&&entry){setPurchaseOptions(entry.purchaseOptions);const o=entry.purchaseOptions[0];if(o){setOptionId(o.id);cost.setUnits(String(o.units_per_pack));cost.setPackCost(o.pack_price==null?'':String(o.pack_price/100));}}}).catch(()=>{});return()=>{live=false}},[p.id,variant?.id]);
   const taxValue = Number(tax),
     snack = p.category !== "Gear",
     suggested = cost.valid
@@ -185,6 +187,7 @@ function Calculator({
             Try a new supplier quote or restock cost. Calculator changes are
             estimates until you apply them.
           </p>
+          <Field label="Recorded purchase option"><NativeSelect value={optionId} onChange={e=>{setOptionId(e.target.value);const o=purchaseOptions.find(o=>o.id===e.target.value);if(o){cost.setUnits(String(o.units_per_pack));cost.setPackCost(o.pack_price==null?'':String(o.pack_price/100))}}}><option value="">Manual estimate</option>{purchaseOptions.map(o=><option key={o.id} value={o.id}>{o.supplier} · {o.units_per_pack} units · {o.price_kind} {o.price_at?date(o.price_at):'date missing'}{o.stale?' · recheck price':''}</option>)}</NativeSelect></Field>
           <CostInputs cost={cost} />
           <div className="form-grid">
             <NumberField
@@ -356,7 +359,7 @@ export function Performance({ p, data }: { p: Row; data: Row }) {
       const r = await fetch("/api/history?" + q, { cache: "no-store" }),
         j = (await r.json()) as Record<string, any>;
       if (!r.ok) throw Error(j.error);
-      setInfo((old) => ({ ...j, events: [...old!.events, ...j.events] }));
+      setInfo((old) => ({ ...old,...j,receipts:old!.receipts,receiptCursor:old!.receiptCursor,events: [...old!.events, ...j.events] }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "History could not load.");
     } finally {
@@ -412,12 +415,12 @@ export function Performance({ p, data }: { p: Row; data: Row }) {
           <b>{money(stats.sales)}</b>
         </div>
         <div className="stat">
-          <small>Cost of sold items</small>
-          <b>{stats.unknownUnits ? "Incomplete" : money(stats.knownCost)}</b>
+          <small>Known cost of sold items</small>
+          <b>{money(stats.knownCost)}</b>
         </div>
         <div className="stat">
-          <small>Gross profit</small>
-          <b>{money(stats.profit)}</b>
+          <small>Gross profit · known-cost sales</small>
+          <b>{money(stats.knownProfit)}</b>
         </div>
       </div>
       <dl className="numbers">
@@ -434,7 +437,7 @@ export function Performance({ p, data }: { p: Row; data: Row }) {
           <dd>{money(costs)}</dd>
         </div>
         <div>
-          <dt>Most recent received unit cost</dt>
+          <dt>Most recent purchased unit cost</dt>
           <dd>
             {last?.qty ? money(last.amount / last.qty) : "No recorded restock"}
           </dd>
@@ -442,7 +445,7 @@ export function Performance({ p, data }: { p: Row; data: Row }) {
       </dl>
       <p className="fine">
         Sales include unpaid purchases and preorders; voided orders are
-        excluded. Profit uses the original sale’s cost and excludes payment fees
+        excluded. Profit uses recorded sale cost and audited evidence corrections, and excludes payment fees
         and overhead. Restock spending is shown separately, not deducted a
         second time.
         {stats.unknownUnits
@@ -452,7 +455,9 @@ export function Performance({ p, data }: { p: Row; data: Row }) {
           : ""}{" "}
         Dates cover all options for this product.
       </p>
-      <h3>Price & restock history</h3>
+      <p className="fine">Cost coverage: {stats.units?Math.round((stats.units-stats.unknownUnits)/stats.units*100)+'% of units':'No sales in this period'}. Unknown cost remains unknown until evidence is recorded in Money → Missing sale costs.</p>
+      <h3>Purchase receipts</h3>{info?.receipts?.map((r:Row)=><div className="history-entry" key={r.id}><div><strong>{r.reference}</strong><small>{date(r.created_at)} · {r.supplier||'Historical supplier not recorded'}</small><span>{r.packs==null?'Pack details not recorded':r.packs+' packs × '+r.units_per_pack+' units'} · {r.received_qty} units received</span></div><span>{money(r.total_cost)}</span></div>)}{info?.receiptCursor&&<Button disabled={busy} variant="secondary" onClick={async()=>{setBusy(true);try{const q=new URLSearchParams({dataset:'receipts',scope:'admin',productId:p.id,from,to,cursor:info.receiptCursor});const response=await fetch('/api/history?'+q,{cache:'no-store'}),j=await response.json() as Row;if(!response.ok)throw Error(j.error);setInfo(old=>({...old,receipts:[...old!.receipts,...j.records],receiptCursor:j.nextCursor}))}catch(e){setError((e as Error).message)}finally{setBusy(false)}}}>Load older receipts</Button>}
+      <h3>Price & stock changes</h3>
       {events.length ? (
         events.map((e: Row) => {
           const d = JSON.parse(e.detail);

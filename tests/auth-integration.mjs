@@ -72,7 +72,7 @@ try {
     "EARNING-SCHEMA.sql",
     "REDEMPTION-SCHEMA.sql",
     "PROFILE-EXPERIENCE-SCHEMA.sql",
-    "ADMIN-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql", "WORKFLOW-SCHEMA.sql",
   ])
     await db.exec(
       readFileSync(file, "utf8")
@@ -112,9 +112,10 @@ try {
     });
   };
   let r = await req("/");
+  const landing = await r.text();
   check(
-    [302, 303, 307].includes(r.status),
-    "store redirects anonymous visitor (HTTP " + r.status + ")",
+    r.status === 200 && !r.headers.has("location") && landing.includes("IYAAYASFW member login") && landing.includes("Why we request Google account information") && !landing.includes("Email the store team"),
+    "anonymous root renders public app information without the store",
   );
   r = await req("/login");
   check(

@@ -1,11 +1,16 @@
 import { type DB, type Row, fail, str, int, first, rows, stmt, audit, guard, hash } from './core';
 import { operation, noteText } from './operation';
-const sourceSnapshot = `json_array(t.type,t.target,t.reference,t.title,t.person,t.amount,t.severity,t.created_at,t.due_at,t.active,t.dismissible)`;
+const sourceSnapshot = `json_array(t.type,t.target,t.reference,t.title,t.person,t.amount,t.severity,t.created_at,t.due_at,t.active,t.dismissible,recovery.expires_at)`;
 const tasksSQL = `SELECT t.*,m.assignee,m.state work_state,COALESCE(m.version,-1) version,
+ person.email member_email,person.role member_role,person.active member_active,
+ CASE WHEN t.type='reset' THEN EXISTS(SELECT 1 FROM auth_credentials c WHERE c.member_id=t.target) ELSE NULL END password_set,
+ recovery.expires_at recovery_expires_at,
  COALESCE(m.due_at,t.due_at) deadline,${sourceSnapshot} source_snapshot,
  CASE WHEN s.until_at>CAST(strftime('%s','now') AS INTEGER)*1000 AND s.source_snapshot=${sourceSnapshot} AND t.active=1 THEN s.until_at ELSE NULL END snoozed_until,
  CASE WHEN t.active=0 OR(t.dismissible=1 AND m.state='resolved') THEN 'resolved' ELSE COALESCE(NULLIF(m.state,'resolved'),'open') END status
- FROM operational_tasks t LEFT JOIN admin_task_meta m ON m.task_key=t.task_key LEFT JOIN admin_task_snoozes s ON s.task_key=t.task_key`;
+ FROM operational_tasks t LEFT JOIN admin_task_meta m ON m.task_key=t.task_key LEFT JOIN admin_task_snoozes s ON s.task_key=t.task_key
+ LEFT JOIN members person ON t.type IN('reset','tab') AND person.id=t.target
+ LEFT JOIN auth_recovery recovery ON t.type='reset' AND recovery.member_id=t.target`;
 const revision = (t: Row) => hash({ source: t.source_snapshot, version: t.version });
 const routineNote = (v: unknown, fallback: string) => v == null || (typeof v === 'string' && !v.trim()) ? fallback : noteText(v, 1000, 1);
 async function decorate(t: Row) { const { source_snapshot, ...publicTask } = t; return { ...publicTask, revision: await revision(t) }; }
@@ -16,7 +21,7 @@ export async function taskPage(db: DB, m: Row, q: Row) {
  const where = [filter === 'open' ? "status<>'resolved' AND snoozed_until IS NULL" : filter === 'resolved' ? "status='resolved'" : filter === 'mine' ? "assignee=? AND status<>'resolved' AND snoozed_until IS NULL" : filter === 'snoozed' ? "status<>'resolved' AND snoozed_until IS NOT NULL" : '1=1'], args: any[] = filter === 'mine' ? [m.id] : [];
  if (search) { where.push('(instr(lower(title),lower(?))>0 OR instr(lower(person),lower(?))>0 OR instr(lower(reference),lower(?))>0)'); args.push(search, search, search); }
  if (q.type) { const types=[...new Set(str(q.type,250).split(','))]; const allowed=['payment','tab','email','reset','stock','report','request','team','pickup','trial','adjustment','guest','profile','profile-report']; if(types.some(t=>!allowed.includes(t))) fail('Choose a supported task type.'); where.push('type IN ('+types.map(()=>'?').join(',')+')'); args.push(...types); }
- const records = await rows(db, `SELECT * FROM (${tasksSQL}) WHERE ${where.join(' AND ')} ORDER BY CASE severity WHEN 'high' THEN 0 ELSE 1 END,created_at DESC,task_key LIMIT 51 OFFSET ?`, ...args, offset);
+ const records = await rows(db, `SELECT * FROM (${tasksSQL}) WHERE ${where.join(' AND ')} ORDER BY CASE type WHEN 'payment' THEN 0 WHEN 'reset' THEN 1 WHEN 'email' THEN 2 ELSE 3 END,CASE severity WHEN 'high' THEN 0 ELSE 1 END,created_at ASC,task_key LIMIT 51 OFFSET ?`, ...args, offset);
  // Counts include snoozed obligations; a reminder is not settlement or fulfillment.
  const counts = await rows(db, `SELECT type,COUNT(*) count FROM (${tasksSQL}) WHERE status<>'resolved' GROUP BY type`);
  const now = Date.now(), today = Date.UTC(new Date(now).getUTCFullYear(),new Date(now).getUTCMonth(),new Date(now).getUTCDate());

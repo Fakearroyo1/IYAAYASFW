@@ -13,9 +13,9 @@ import {
 import { Field, date, type Row } from "./shared";
 import { useCommunityAction } from "./community-action";
 import { ActionFeedback } from "./community";
-export default function TeamBoard({ memberId }: { memberId: string }) {
+export default function TeamBoard({ memberId,initialThreadId="" }: { memberId: string;initialThreadId?:string }) {
   const [data, setData] = useState<Row>({ records: [], replies: [] }),
-    [threadId, setThreadId] = useState(""),
+    [threadId, setThreadId] = useState(initialThreadId),
     [creating, setCreating] = useState(false),
     [filter, setFilter] = useState("all"),
     [error, setError] = useState("");
@@ -289,14 +289,16 @@ export default function TeamBoard({ memberId }: { memberId: string }) {
 export function ModerationQueue({
   memberId,
   onMember,
+  initialReportId="",
 }: {
   memberId: string;
-  onMember: (name: string) => void;
+  onMember: (name: string,id:string) => void;
+  initialReportId?: string;
 }) {
   const [data, setData] = useState<Row>({ records: [] }),
     [error, setError] = useState("");
   async function refresh() {
-    const r = await fetch("/api/community?kind=reports", { cache: "no-store" }),
+    const r = await fetch("/api/community?"+new URLSearchParams({kind:'reports',id:initialReportId}), { cache: "no-store" }),
       j = (await r.json()) as Row;
     if (!r.ok) throw Error(j.error);
     setData(j);
@@ -370,7 +372,7 @@ export function ModerationQueue({
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => onMember(r.author_name || "")}
+                  onClick={() => onMember(r.author_name || "",r.author_id)}
                 >
                   Manage member posting
                 </Button>

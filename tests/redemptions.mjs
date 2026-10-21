@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -13,7 +14,7 @@ for (const f of fs.readdirSync("lib", { recursive: true }).filter(f => f.endsWit
   }).outputText.replace(/from (["'])(\.{1,2}\/[^"']+)\1/g, 'from "$2.mjs"'));
 }
 fs.writeFileSync(out + "/lib/pilot/owner.mjs", "export const OWNER_EMAIL='owner@example.test';");
-const { mutateRedemptions, redemptionPage, rewardWallet, randomTicket } = await import(out + "/lib/pilot/redemptions.mjs");
+const { mutateRedemptions, redemptionPage, rewardWallet, randomTicket } = await import(pathToFileURL(out + "/lib/pilot/redemptions.mjs").href);
 const sqlite = new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for (const f of ["drizzle/0000_tiny_shape.sql", "drizzle/0001_absent_guardsmen.sql", "AUTH-SCHEMA.sql", "PRODUCT-SCHEMA.sql", "SECURITY-SCHEMA.sql", "BETA-SCHEMA.sql", "ROUNDS-SCHEMA.sql"])
@@ -142,7 +143,7 @@ if (process.env.REDEMPTION_FIXTURE_FILE) {
   const open = (await action("owner", raffleBody("Fall crew appreciation raffle"))).id;
   await action("owner", { action: "raffleEntryAdd", raffleId: open, version: 0, memberId: "member", quantity: 2 });
   await action("owner", { action: "redemptionRewardSave", name: "Fall raffle entry", description: "Redeem Murley Bucks for an entry in this season's crew appreciation draw.", kind: "raffle", points: 10, ticketQuantity: 1, raffleId: open, active: true, stockLimit: null });
-  const { rewardsPage } = await import(out + "/lib/pilot/rewards.mjs");
+  const { rewardsPage } = await import(pathToFileURL(out + "/lib/pilot/rewards.mjs").href);
   const fixture = { admin: await redemptionPage(db, users.owner, { raffleId: open }, true), member: await redemptionPage(db, users.member, {}),
     rewardsAdmin: await rewardsPage(db, users.owner, {}, true), rewardsMember: await rewardsPage(db, users.member, {}),
     members: Object.values(users), generatedFrom: "Disposable test database only" };

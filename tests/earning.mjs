@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from 'node:sqlite';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,11 +10,11 @@ for(const f of fs.readdirSync('lib',{recursive:true}).filter(f=>f.endsWith('.ts'
  fs.writeFileSync(dest,ts.transpileModule(fs.readFileSync(path.join('lib',f),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from (["'])(\.{1,2}\/[^"']+)\1/g,'from "$2.mjs"'));
 }
 fs.writeFileSync(out+'/lib/pilot/owner.mjs',"export const OWNER_EMAIL='owner@example.test';");
-const {EarningPlan,rewardCreditGrant,earningSummary,mutateEarning}=await import(out+'/lib/pilot/earning.mjs');
-const {placeOrder}=await import(out+'/lib/pilot/orders.mjs');
-const {mutate}=await import(out+'/lib/pilot/service.mjs');
-const {verifyPayment,applyCredit,transactionDetail,correctionAmounts,correctTransaction}=await import(out+'/lib/pilot/transactions.mjs');
-const {batchAtomic,stmt}=await import(out+'/lib/pilot/core.mjs');
+const {EarningPlan,rewardCreditGrant,earningSummary,mutateEarning}=await import(pathToFileURL(out+'/lib/pilot/earning.mjs').href);
+const {placeOrder}=await import(pathToFileURL(out+'/lib/pilot/orders.mjs').href);
+const {mutate}=await import(pathToFileURL(out+'/lib/pilot/service.mjs').href);
+const {verifyPayment,applyCredit,transactionDetail,correctionAmounts,correctTransaction}=await import(pathToFileURL(out+'/lib/pilot/transactions.mjs').href);
+const {batchAtomic,stmt}=await import(pathToFileURL(out+'/lib/pilot/core.mjs').href);
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
 for(const f of ['drizzle/0000_tiny_shape.sql','drizzle/0001_absent_guardsmen.sql','AUTH-SCHEMA.sql','PRODUCT-SCHEMA.sql','SECURITY-SCHEMA.sql','BETA-SCHEMA.sql','ROUNDS-SCHEMA.sql','GUEST-SCHEMA.sql','AUTOPILOT-SCHEMA.sql','REWARDS-SCHEMA.sql'])sqlite.exec(fs.readFileSync(f,'utf8'));
 const run=(sql,...v)=>sqlite.prepare(sql).run(...v), get=(sql,...v)=>sqlite.prepare(sql).get(...v);
@@ -27,6 +28,9 @@ run("INSERT INTO orders(id,code,fingerprint,member_id,payer,method,total,tax,cos
 run("INSERT INTO reward_ledger(id,member_id,amount,rule_id,source,actor,note,created_at) VALUES('past',?,17,'manual','historical','owner','Previously earned',1)",legacy.id);
 const originalOrders=JSON.stringify(sqlite.prepare('SELECT * FROM orders').all()),originalMembers=JSON.stringify(sqlite.prepare('SELECT * FROM members').all());
 for(let i=0;i<2;i++)sqlite.exec(fs.readFileSync('EARNING-SCHEMA.sql','utf8'));
+// The synthetic launch precedes the fixed October 5 week-boundary scenario.
+// SQLite's real clock must not move the launch past purchases in this fixture.
+run("UPDATE earning_settings SET starts_at=? WHERE id='main'",Date.UTC(2026,9,1));
 assert.equal(JSON.stringify(sqlite.prepare('SELECT * FROM orders').all()),originalOrders);
 assert.equal(JSON.stringify(sqlite.prepare('SELECT * FROM members').all()),originalMembers);
 assert.equal(get('SELECT SUM(amount) n FROM reward_ledger WHERE member_id=?',legacy.id).n,17);

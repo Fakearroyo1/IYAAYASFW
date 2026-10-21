@@ -44,7 +44,7 @@ export async function GET(request: Request) {
         includeAdmin: await adminVerified(env.DB, user),
       }),
     );
-    const cookie = await renewSession(env.DB, request.headers.get("cookie"));
+    const cookie = env.IDENTITY_ENABLED==='true'?null:await renewSession(env.DB, request.headers.get("cookie"));
     if (cookie) response.headers.set("Set-Cookie", cookie);
     return response;
   } catch (e) {

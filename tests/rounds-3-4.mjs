@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import {DatabaseSync} from 'node:sqlite';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,11 +7,11 @@ import ts from 'typescript';
 const out=path.resolve('.sites-runtime/rounds34-tests');
 for(const f of fs.readdirSync('lib',{recursive:true}).filter(f=>f.endsWith('.ts'))){const dest=path.join(out,'lib',f.replace(/\.ts$/,'.mjs'));fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,ts.transpileModule(fs.readFileSync(path.join('lib',f),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from (["'])(\.{1,2}\/[^"']+)\1/g,'from "$2.mjs"'))}
 fs.writeFileSync(out+'/lib/pilot/owner.mjs',"export const OWNER_EMAIL='owner@example.test';");
-const {changeEmail,emailChanges}=await import(out+'/lib/pilot/email-changes.mjs');
-const {mutateInitiative,initiativePage}=await import(out+'/lib/pilot/initiatives.mjs');
-const {taskPage,updateTask}=await import(out+'/lib/pilot/tasks.mjs');
-const {passwordHash,digest}=await import(out+'/lib/auth/password.mjs');
-const {mutateCommunity}=await import(out+'/lib/pilot/community.mjs');
+const {changeEmail,emailChanges}=await import(pathToFileURL(out+'/lib/pilot/email-changes.mjs').href);
+const {mutateInitiative,initiativePage}=await import(pathToFileURL(out+'/lib/pilot/initiatives.mjs').href);
+const {taskPage,updateTask}=await import(pathToFileURL(out+'/lib/pilot/tasks.mjs').href);
+const {passwordHash,digest}=await import(pathToFileURL(out+'/lib/auth/password.mjs').href);
+const {mutateCommunity}=await import(pathToFileURL(out+'/lib/pilot/community.mjs').href);
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
 for(const f of ['drizzle/0000_tiny_shape.sql','drizzle/0001_absent_guardsmen.sql','AUTH-SCHEMA.sql','PRODUCT-SCHEMA.sql','SECURITY-SCHEMA.sql','BETA-SCHEMA.sql'])sqlite.exec(fs.readFileSync(f,'utf8'));
 const run=(s,...v)=>sqlite.prepare(s).run(...v),get=(s,...v)=>sqlite.prepare(s).get(...v);
@@ -18,7 +19,7 @@ run("INSERT INTO settings(id,enabled) VALUES('main',1)");
 const users={};for(const [id,role]of[['owner','admin'],['admin','admin'],['buyer','member'],['gear','member']]){run('INSERT INTO members(id,user_id,email,name,role,debt,credit) VALUES(?,?,?,?,?,?,?)',id,id,id+'@example.test',id,role,id==='buyer'?2100:0,id==='buyer'?700:0);users[id]={...get('SELECT * FROM members WHERE id=?',id),posting_enabled:1};}
 run("INSERT INTO member_access(member_id,snacks,gear) VALUES('gear',0,1)");
 const snapshot=JSON.stringify(sqlite.prepare('SELECT * FROM members').all());for(let n=0;n<2;n++)sqlite.exec(fs.readFileSync('ROUNDS-SCHEMA.sql','utf8'));
-for(const f of ['GUEST-SCHEMA.sql', 'AUTOPILOT-SCHEMA.sql', 'REWARDS-SCHEMA.sql', 'EARNING-SCHEMA.sql', 'REDEMPTION-SCHEMA.sql', 'PROFILE-EXPERIENCE-SCHEMA.sql', 'ADMIN-EXPERIENCE-SCHEMA.sql'])sqlite.exec(fs.readFileSync(f,'utf8'));
+for(const f of ['GUEST-SCHEMA.sql', 'AUTOPILOT-SCHEMA.sql', 'REWARDS-SCHEMA.sql', 'EARNING-SCHEMA.sql', 'REDEMPTION-SCHEMA.sql', 'PROFILE-EXPERIENCE-SCHEMA.sql', 'ADMIN-EXPERIENCE-SCHEMA.sql', 'WORKFLOW-SCHEMA.sql'])sqlite.exec(fs.readFileSync(f,'utf8'));
 
 let checks=0;const ok=(x,n)=>{assert.ok(x,n);checks++},bad=async(f,re)=>{await assert.rejects(f,re);checks++};
 ok(JSON.stringify(sqlite.prepare('SELECT * FROM members').all())===snapshot,'repeat migration preserves all members and balances');

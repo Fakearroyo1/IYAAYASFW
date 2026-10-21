@@ -1,4 +1,5 @@
 "use client";
+import {secureFetch} from "@/lib/identity/client";
 import { useEffect, useRef, useState } from "react";
 import type { Row } from "./shared";
 export function useCommunityAction(
@@ -30,7 +31,7 @@ export function useCommunityAction(
     const controller = new AbortController(),
       timeout = setTimeout(() => controller.abort(), 20000);
     try {
-      const r = await fetch("/api/community", {
+      const r = await secureFetch("/api/community", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),

@@ -8,6 +8,9 @@ export function exportRows(data: Row, kind: string, from = "", to = ""): Row[] {
     end = to ? Date.parse(to + "T00:00:00Z") + 86400000 : Infinity;
   const included = (r: Row) => r.created_at >= start && r.created_at < end;
   const snapshot = new Date().toISOString();
+  if(kind==='runItems')return a.runItems;
+  if(kind==='receipts')return a.receipts.map((r:Row)=>({"Receipt line ID":r.id,"Receipt ID":r.receipt_id,"Run ID":r.run_id||'',"Product ID":r.product_id,"Purchased UTC":utc(r.created_at),"Source":r.source,"Supplier":r.supplier||'',"Packs":r.packs??'',"Units per pack":r.units_per_pack??'',"Quantity":r.qty,"Received units":r.received_qty,"Pack price USD":dollars(r.pack_price),"Allocated charges USD":dollars(r.allocated_charges),"Exact cost USD":dollars(r.total_cost),"Reference":r.reference}));
+  if(kind==='purchaseCorrections')return a.purchaseCorrections.map((r:Row)=>({"Correction ID":r.id,"Receipt ID":r.receipt_id,"Line ID":r.purchase_line_id,"Product":r.product_name,"Kind":r.kind,"Quantity":r.qty,"Removed from stock":r.stock_qty,"Refund USD":dollars(r.refund),"Account":r.account_id||'',"Reason":r.reason,"Actor":r.actor,"Recorded UTC":utc(r.created_at)}));
   if (kind === "purchases")
     return a.orders
       .filter(included)

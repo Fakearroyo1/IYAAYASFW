@@ -1,4 +1,5 @@
 "use client";
+import {secureFetch} from "@/lib/identity/client";
 import { useState } from "react";
 import { Star, Shield, HandHeart, Compass, Medal, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -718,7 +719,7 @@ async function uploadImage(file: File, kind: string) {
         "image/png",
       ),
     );
-    const r = await fetch("/api/profile-images?kind=" + kind, {
+    const r = await secureFetch("/api/profile-images?kind=" + kind, {
         method: "POST",
         headers: { "Content-Type": "image/png" },
         body: blob,

@@ -92,7 +92,7 @@ try {
     "EARNING-SCHEMA.sql",
     "REDEMPTION-SCHEMA.sql",
     "PROFILE-EXPERIENCE-SCHEMA.sql",
-    "ADMIN-EXPERIENCE-SCHEMA.sql",
+    "ADMIN-EXPERIENCE-SCHEMA.sql", "WORKFLOW-SCHEMA.sql",
   ])
     await db.exec(
       readFileSync(file, "utf8")

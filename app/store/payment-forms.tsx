@@ -156,6 +156,7 @@ export function PaymentConfirmation({
           id: p.id,
           reference: String(f.get("reference") || ""),
           amountReceived: received,
+          ...(f.get("receivedAt")?{effectiveAt:Date.parse(String(f.get("receivedAt")))}:{}),
           expectedCredit: creditAdded,
           confirmed: f.has("confirmed"),
         });
@@ -190,6 +191,7 @@ export function PaymentConfirmation({
             onChange={(e) => setAmount(e.target.value)}
           />
         </Field>
+        <Field label="Money received at (local time, optional)"><Input type="datetime-local" name="receivedAt"/></Field><p className="fine">Use the actual receipt time, especially if the money was included in an earlier balance check. Leave blank if the time is unknown.</p>
         {p.method === "cashapp" ? (
           <Field label="Cash App transaction ID">
             <Input name="reference" required maxLength={100} />

@@ -1,5 +1,5 @@
 import Pilot from './pilot';
 import {getUser} from './auth';
-import {redirect} from 'next/navigation';
+import About from './about/page';
 export const dynamic='force-dynamic';
-export default async function Home(){if(!await getUser())redirect('/login');return <Pilot/>}
+export default async function Home(){return await getUser()?<Pilot/>:<About/>}
